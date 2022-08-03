@@ -59,7 +59,7 @@ CALC_TYPE compute_covariance_function(std::size_t n_regressors, CALC_TYPE* hyper
   return hyperparameters[1] * exp(-0.5 * hyperparameters[0] * distance);
 }
 
-std::vector<CALC_TYPE> gen_tile(std::size_t row, std::size_t col, std::size_t N, std::size_t n_tiles, std::size_t n_regressors, CALC_TYPE *hyperparameters, std::vector<CALC_TYPE> input)
+std::vector<CALC_TYPE> gen_tile_covariance(std::size_t row, std::size_t col, std::size_t N, std::size_t n_tiles, std::size_t n_regressors, CALC_TYPE *hyperparameters, std::vector<CALC_TYPE> input)
 {
    std::size_t i_global,j_global;
    CALC_TYPE covariance_function;
@@ -109,9 +109,21 @@ std::vector<CALC_TYPE> gen_cross_covariance(std::size_t N_row, std::size_t N_col
    return tile;
 }
 
+std::vector<CALC_TYPE> gen_tile_output(std::size_t row, std::size_t N, std::vector<CALC_TYPE> output)
+{
+   std::size_t i_global;
+   // Initialize tile
+   std::vector<CALC_TYPE> tile;
+   tile.resize(N);
+   for(std::size_t i = 0; i < N; i++)
+   {
+      i_global = N * row + i;
+      tile[i] = output[i_global];
+   }
+   return tile;
+}
 ////////////////////////////////////////////////////////////////////////////////
-// BLAS operations
-
+// BLAS operations for tiled cholkesy
 // Cholesky decomposition of A -> return factorized matrix L
 std::vector<CALC_TYPE> potrf(std::vector<CALC_TYPE> A,
                              std::size_t N)
@@ -202,6 +214,80 @@ std::vector<CALC_TYPE> gemm(std::vector<CALC_TYPE> A,
   return C;
 }
 
+// BLAS operations for tiled triangular solve
+// solve L * x = a where L lower triangular
+std::vector<CALC_TYPE> trsm_l(std::vector<CALC_TYPE> L,
+                              std::vector<CALC_TYPE> a,
+                              std::size_t N)
+{
+  // convert to boost matrices
+  ublas::matrix< CALC_TYPE, ublas::row_major, std::vector<CALC_TYPE> > L_blas(N, N);
+  L_blas.data() = L;
+  ublas::vector< CALC_TYPE, std::vector<CALC_TYPE> > a_blas(N);
+  a_blas.data() = a;
+  // TRSM
+  ublas::inplace_solve(L_blas, a_blas, ublas::lower_tag());
+  // reformat to std::vector
+  a = a_blas.data();
+  return a;
+}
+
+// solve L^T * x = a where L lower triangular
+std::vector<CALC_TYPE> trsm_u(std::vector<CALC_TYPE> L,
+                              std::vector<CALC_TYPE> a,
+                              std::size_t N)
+{
+  // convert to boost matrices
+  ublas::matrix< CALC_TYPE, ublas::row_major, std::vector<CALC_TYPE> > L_blas(N, N);
+  L_blas.data() = L;
+  ublas::vector< CALC_TYPE, std::vector<CALC_TYPE> > a_blas(N);
+  a_blas.data() = a;
+  // TRSM
+  ublas::inplace_solve(ublas::trans(L_blas), a_blas, ublas::upper_tag());
+  // reformat to std::vector
+  a = a_blas.data();
+  return a;
+}
+
+// b = b - A * a
+std::vector<CALC_TYPE> gemv_l(std::vector<CALC_TYPE> A,
+                            std::vector<CALC_TYPE> a,
+                            std::vector<CALC_TYPE> b,
+                            std::size_t N)
+{
+  // convert to boost matrix and vectors
+  ublas::matrix< CALC_TYPE, ublas::row_major, std::vector<CALC_TYPE> > A_blas(N, N);
+  A_blas.data() = A;
+  ublas::vector< CALC_TYPE, std::vector<CALC_TYPE> > a_blas(N);
+  a_blas.data() = a;
+  ublas::vector< CALC_TYPE, std::vector<CALC_TYPE> > b_blas(N);
+  b_blas.data() = b;
+  // GEMM
+  b_blas = b_blas - ublas::prod(A_blas, a_blas);
+  // reformat to std::vector
+  b = b_blas.data();
+  return b;
+}
+
+// b = b - A^T * a
+std::vector<CALC_TYPE> gemv_u(std::vector<CALC_TYPE> A,
+                            std::vector<CALC_TYPE> a,
+                            std::vector<CALC_TYPE> b,
+                            std::size_t N)
+{
+  // convert to boost matrix and vectors
+  ublas::matrix< CALC_TYPE, ublas::row_major, std::vector<CALC_TYPE> > A_blas(N, N);
+  A_blas.data() = A;
+  ublas::vector< CALC_TYPE, std::vector<CALC_TYPE> > a_blas(N);
+  a_blas.data() = a;
+  ublas::vector< CALC_TYPE, std::vector<CALC_TYPE> > b_blas(N);
+  b_blas.data() = b;
+  // GEMM
+  b_blas = b_blas - ublas::prod(ublas::trans(A_blas), a_blas);
+  // reformat to std::vector
+  b = b_blas.data();
+  return b;
+}
 ////////////////////////////////////////////////////////////////////////////////
 // Tiled Cholesky Algorithms
 void right_looking_cholesky_tiled(std::vector<hpx::shared_future<std::vector<CALC_TYPE>>> &ft_tiles, std::size_t N, std::size_t n_tiles)
@@ -276,6 +362,38 @@ void top_looking_cholesky_tiled(std::vector<hpx::shared_future<std::vector<CALC_
   }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Tiled Triangular Solve Algorithms
+void forward_solve_tiled(std::vector<hpx::shared_future<std::vector<CALC_TYPE>>> &ft_tiles, std::vector<hpx::shared_future<std::vector<CALC_TYPE>>> &ft_rhs, std::size_t N, std::size_t n_tiles)
+{
+  for (std::size_t k = 0; k < n_tiles; k++)
+  {
+    // TRSM
+    ft_rhs[k] = hpx::dataflow(hpx::unwrapping(trsm_l), ft_tiles[k * n_tiles + k], ft_rhs[k], N);
+    for (std::size_t m = k + 1; m < n_tiles; m++)
+    {
+      // GEMV
+      ft_rhs[m] = hpx::dataflow(hpx::unwrapping(gemv_l), ft_tiles[m * n_tiles + k], ft_rhs[k], ft_rhs[m], N);
+    }
+  }
+}
+
+void backward_solve_tiled(std::vector<hpx::shared_future<std::vector<CALC_TYPE>>> &ft_tiles, std::vector<hpx::shared_future<std::vector<CALC_TYPE>>> &ft_rhs, std::size_t N, std::size_t n_tiles)
+{
+  for (int k = n_tiles - 1; k >= 0; k--)
+  {
+    // TRSM
+    ft_rhs[k] = hpx::dataflow(hpx::unwrapping(trsm_u), ft_tiles[k * n_tiles + k], ft_rhs[k], N);
+    for (int m = k - 1; m >= 0; m--) // might cause problems -> int
+    {
+      // GEMV
+      ft_rhs[m] = hpx::dataflow(hpx::unwrapping(gemv_u), ft_tiles[k * n_tiles + m], ft_rhs[k], ft_rhs[m], N);
+      //ft_rhs[m] = hpx::dataflow(hpx::unwrapping(gemv), ft_tiles[m * n_tiles + k], ft_rhs[k], ft_rhs[m], N);
+    }
+  }
+}
+////////////////////////////////////////////////////////////////////////////////
+// Main functions
 int hpx_main(hpx::program_options::variables_map& vm)
 {
   std::string cholesky = vm["cholesky"].as<std::string>();
@@ -293,6 +411,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
   std::size_t tile_size = n_train / n_tiles;
   // HPX structures
   std::vector<hpx::shared_future<std::vector<CALC_TYPE>>> K_tiles;
+  std::vector<hpx::shared_future<std::vector<CALC_TYPE>>> output_tiles;
   hpx::shared_future<std::vector<CALC_TYPE>> cross_covariance;
   // data holders for assembly
   std::vector<CALC_TYPE>   training_input;
@@ -349,11 +468,17 @@ int hpx_main(hpx::program_options::variables_map& vm)
   {
      for (std::size_t j = 0; j < n_tiles; ++j)
      {
-        K_tiles[i * n_tiles + j] = hpx::dataflow(&gen_tile, i, j, tile_size, n_tiles, n_regressors, hyperparameters, training_input);
+        K_tiles[i * n_tiles + j] = hpx::dataflow(&gen_tile_covariance, i, j, tile_size, n_tiles, n_regressors, hyperparameters, training_input);
      }
   }
-  //Assemble cross-covariacne (currently not tiled)
+  //Assemble cross-covariacne (not tiled)
   cross_covariance = hpx::dataflow(&gen_cross_covariance, n_train, n_test, n_regressors, hyperparameters, training_input,test_input);
+  //Assemble output data
+  output_tiles.resize(n_tiles);
+  for (std::size_t i = 0; i < n_tiles; i++)
+  {
+    output_tiles[i] = hpx::dataflow(&gen_tile_output, i, tile_size, training_output);
+  }
   // Stop timer - wrong since not blocking
   CALC_TYPE t_elapsed_assemble = t_start_assemble.elapsed();
   //////////////////////////////////////////////////////////////////////////////
@@ -373,6 +498,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
   {
     top_looking_cholesky_tiled(K_tiles,tile_size, n_tiles);
   }
+  /*
   // Assemble to big matrix
   std::vector<CALC_TYPE> L;
   L.resize(n_train * n_train);
@@ -393,6 +519,24 @@ int hpx_main(hpx::program_options::variables_map& vm)
         }
      }
   }
+  */
+  forward_solve_tiled(K_tiles,output_tiles,tile_size,n_tiles);
+  backward_solve_tiled(K_tiles,output_tiles,tile_size,n_tiles);
+  std::vector<CALC_TYPE> alpha;
+  alpha.resize(n_train);
+
+  for (std::size_t k = 0; k < n_tiles; k++)
+  {
+    auto tile = output_tiles[k].get();
+    for(std::size_t i = 0; i < tile_size; i++)
+    {
+      std::size_t i_global = tile_size * k + i;
+      alpha[i_global] = tile[i];
+    }
+  }
+  ublas::vector< CALC_TYPE, std::vector<CALC_TYPE> > alpha_blas(n_train);
+  alpha_blas.data() = alpha;
+
   // Stop timer
   CALC_TYPE t_elapsed_cholesky = t_start_cholesky.elapsed();
   //////////////////////////////////////////////////////////////////////////////
@@ -400,6 +544,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
   // Currently quick and dirty triangular solve
   // Start timer
   hpx::chrono::high_resolution_timer t_start_triangular;
+/*
   // convert to boost matrices
   ublas::matrix< CALC_TYPE, ublas::row_major, std::vector<CALC_TYPE> > L_blas(n_train, n_train);
   L_blas.data() = L;
@@ -413,6 +558,11 @@ int hpx_main(hpx::program_options::variables_map& vm)
   // solve triangular systems
   ublas::inplace_solve(L_blas, alpha, ublas::lower_tag() );
   ublas::inplace_solve(ublas::trans(L_blas), alpha, ublas::upper_tag());
+*/
+  ublas::matrix< CALC_TYPE, ublas::row_major, std::vector<CALC_TYPE> > cross_covariance_blas(n_train, n_test);
+  cross_covariance_blas.data() = cross_covariance.get();
+  ublas::vector< CALC_TYPE, std::vector<CALC_TYPE> > y_test(n_test);
+  y_test.data() = test_output;
   // Stop timer
   CALC_TYPE t_elapsed_triangular = t_start_triangular.elapsed();
   //////////////////////////////////////////////////////////////////////////////
@@ -420,9 +570,9 @@ int hpx_main(hpx::program_options::variables_map& vm)
   // Start timer
   hpx::chrono::high_resolution_timer t_start_predict;
   // make predictions
-  alpha = ublas::prod(ublas::trans(cross_covariance_blas), alpha);
+  alpha_blas = ublas::prod(ublas::trans(cross_covariance_blas), alpha_blas);
   // compute error
-  CALC_TYPE error = ublas::norm_2(alpha - y_test);
+  CALC_TYPE error = ublas::norm_2(alpha_blas - y_test);
   // Stop timer
   CALC_TYPE t_elapsed_predict = t_start_predict.elapsed();
   //////////////////////////////////////////////////////////////////////////////
