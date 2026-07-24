@@ -13,9 +13,19 @@
       "name": "fmt"
     },
     {
-      "name": "hpx"
+      "name": "hpx",
+      "features": [
+        "cuda",
+        "bzip2",
+        "mpi",
+        "snappy",
+        "zlib"
+      ]
+    },
+    {
+      "name": "cuda"
     }
   ],
   "default-features": [],
-  "builtin-baseline": "e08b7bd89ae162f8579df2f8d39a1ae94107c8fd"
+  "builtin-baseline": "365f6444ab40ee87c73c947b475b3a267b3cb77c"
 }

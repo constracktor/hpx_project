@@ -1,6 +1,8 @@
-#include "gpu/cuda/cuda_kernels.cuh"
+#include "gprat/gpu/cuda_kernels.cuh"
 
-#include "gpu/cuda/cuda_utils.cuh"
+#include "gprat/gpu/cuda_utils.cuh"
+
+GPRAT_NS_BEGIN
 
 __global__ void transpose(double *transposed, double *original, std::size_t width, std::size_t height)
 {
@@ -25,3 +27,5 @@ __global__ void transpose(double *transposed, double *original, std::size_t widt
         transposed[index_out] = block[threadIdx.x][threadIdx.y];
     }
 }
+
+GPRAT_NS_END

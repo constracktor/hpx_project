@@ -1,4 +1,6 @@
-#include "gpu/cuda/adapter_cublas.cuh"
+#include "gprat/gpu/adapter_cublas.cuh"
+
+GPRAT_NS_BEGIN
 
 // frequently used names
 using hpx::cuda::experimental::check_cuda_error;
@@ -423,8 +425,17 @@ dot(cublasHandle_t cublas,
     double *d_a = f_a.get();
     double *d_b = f_b.get();
 
+    // `result` is a device pointer, but the handle (shared with host-scalar BLAS calls)
+    // defaults to CUBLAS_POINTER_MODE_HOST. Switch to DEVICE mode for this call and
+    // restore the previous mode afterwards so other users of the handle are unaffected.
+    cublasPointerMode_t prev_mode;
+    cublasGetPointerMode(cublas, &prev_mode);
+    cublasSetPointerMode(cublas, CUBLAS_POINTER_MODE_DEVICE);
     cublasDdot(cublas, N, d_a, 1, d_b, 1, result);
+    cublasSetPointerMode(cublas, prev_mode);
     check_cuda_error(cudaStreamSynchronize(stream));
 
     return hpx::make_ready_future(result);
 }
+
+GPRAT_NS_END

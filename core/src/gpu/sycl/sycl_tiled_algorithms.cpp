@@ -84,20 +84,22 @@ void forward_solve_tiled(std::vector<hpx::shared_future<double *>> &ft_tiles,
 
         ft_rhs[k] = hpx::make_ready_future(result);
 
+        double *x_k = result;
         auto gemv_queue = sycl_device.next_queue();
 
         for (std::size_t m = k + 1; m < n_tiles; ++m)
         {
-            // GEMV: b = b - A * a
-            ft_rhs[m] = hpx::make_ready_future(gemv(
-                gemv_queue,
-                ft_tiles[m * n_tiles + k].get(),
-                result,
-                ft_rhs[m].get(),
-                n_tile_size,
-                n_tile_size,
-                -1,
-                oneapi::math::transpose::nontrans));
+            // GEMV: b = b - A * x_k
+            result = gemv(gemv_queue,
+                          ft_tiles[m * n_tiles + k].get(),
+                          x_k,
+                          ft_rhs[m].get(),
+                          n_tile_size,
+                          n_tile_size,
+                          -1,
+                          oneapi::math::transpose::nontrans);
+
+            ft_rhs[m] = hpx::make_ready_future(result);
         }
     }
 }
@@ -117,7 +119,7 @@ void backward_solve_tiled(std::vector<hpx::shared_future<double *>> &ft_tiles,
     {
         // TRSM: Solve L^T * x = a
         result = trsv(sycl_device.next_queue(),
-                      ft_tiles[k * n_tiles + k].get(),
+                      ft_tiles[static_cast<std::size_t>(k) * n_tiles + static_cast<std::size_t>(k)].get(),
                       ft_rhs[static_cast<std::size_t>(k)].get(),
                       n_tile_size,
                       oneapi::math::transpose::trans);
@@ -128,7 +130,7 @@ void backward_solve_tiled(std::vector<hpx::shared_future<double *>> &ft_tiles,
         {
             // GEMV: b = b - A^T * a
             result = gemv(sycl_device.next_queue(),
-                          ft_tiles[k * n_tiles + m].get(),
+                          ft_tiles[static_cast<std::size_t>(k) * n_tiles + static_cast<std::size_t>(m)].get(),
                           ft_rhs[static_cast<std::size_t>(k)].get(),
                           ft_rhs[static_cast<std::size_t>(m)].get(),
                           n_tile_size,
@@ -278,8 +280,6 @@ void symmetric_matrix_matrix_diagonal_tiled(
     {
         for (std::size_t n = 0; n < n_tiles; ++n)
         {
-            hpx::shared_future<sycl::queue> f_dot_diag_syrk = hpx::make_ready_future(sycl_device.next_queue());
-
             // Compute inner product to obtain diagonal elements of
             // (K_MxN * (K^-1_NxN * K_NxM))
             result = dot_diag_syrk(sycl_device.next_queue(),
@@ -328,22 +328,13 @@ hpx::shared_future<double> compute_loss_tiled(
     const std::size_t n_tiles,
     gprat::SYCL_DEVICE &sycl_device)
 {
-    std::vector<hpx::shared_future<double>> loss_tiled(n_tiles);
-
+    double total_loss = 0.0;
     for (std::size_t k = 0; k < n_tiles; k++)
     {
-        loss_tiled[k] = hpx::dataflow(
-            [&]()
-            {
-                return compute_loss(ft_tiles[static_cast<std::size_t>(k) * n_tiles + static_cast<std::size_t>(k)],
-                                    ft_alpha[k],
-                                    ft_y[k],
-                                    n_tile_size,
-                                    std::ref(sycl_device));
-            });
+        total_loss += compute_loss(ft_tiles[k * n_tiles + k], ft_alpha[k], ft_y[k], n_tile_size, sycl_device);
     }
-
-    return hpx::dataflow(&add_losses, loss_tiled, n_tile_size, n_tiles);
+    total_loss += static_cast<double>(n_tile_size) * static_cast<double>(n_tiles) * std::log(2.0 * M_PI);
+    return hpx::make_ready_future(0.5 * total_loss / static_cast<double>(n_tile_size * n_tiles));
 }
 
 void symmetric_matrix_matrix_tiled(
@@ -456,32 +447,31 @@ void update_grad_K_tiled_mkl(std::vector<hpx::shared_future<double *>> &ft_tiles
 }
 
 static double update_hyperparameter(
-    const std::vector<hpx::shared_future<double *>> &ft_invK,
-    const std::vector<hpx::shared_future<double *>> &ft_gradparam,
-    const std::vector<hpx::shared_future<double *>> &ft_alpha,
-    double &hyperparameter,  // lengthscale or vertical-lengthscale
-    gprat_hyper::SEKParams sek_params,
-    gprat_hyper::AdamParams adam_params,
-    const std::size_t n_tile_size,
-    const std::size_t n_tiles,
-    std::vector<hpx::shared_future<double>> &m_T,
-    std::vector<hpx::shared_future<double>> &v_T,
-    const std::vector<hpx::shared_future<double>> &beta1_T,
-    const std::vector<hpx::shared_future<double>> &beta2_T,
-    int iter,
-    int param_idx,  // 0 for lengthscale, 1 for vertical-lengthscale
-    gprat::SYCL_DEVICE &sycl_device)
+    const std::vector<hpx::shared_future<double *>> & /*ft_invK*/,
+    const std::vector<hpx::shared_future<double *>> & /*ft_gradparam*/,
+    const std::vector<hpx::shared_future<double *>> & /*ft_alpha*/,
+    double & /*hyperparameter*/,
+    gprat::SEKParams /*sek_params*/,
+    gprat::AdamParams /*adam_params*/,
+    const std::size_t /*n_tile_size*/,
+    const std::size_t /*n_tiles*/,
+    std::vector<hpx::shared_future<double>> & /*m_T*/,
+    std::vector<hpx::shared_future<double>> & /*v_T*/,
+    const std::vector<hpx::shared_future<double>> & /*beta1_T*/,
+    const std::vector<hpx::shared_future<double>> & /*beta2_T*/,
+    int /*iter*/,
+    int /*param_idx*/,
+    gprat::SYCL_DEVICE & /*sycl_device*/)
 {
     throw std::logic_error("Function not implemented for GPU");
-    // return 0;
 }
 
 double update_lengthscale(
     const std::vector<hpx::shared_future<double *>> &ft_invK,
     const std::vector<hpx::shared_future<double *>> &ft_gradparam,
     const std::vector<hpx::shared_future<double *>> &ft_alpha,
-    gprat_hyper::SEKParams sek_params,
-    gprat_hyper::AdamParams adam_params,
+    gprat::SEKParams sek_params,
+    gprat::AdamParams adam_params,
     const std::size_t n_tile_size,
     const std::size_t n_tiles,
     std::vector<hpx::shared_future<double>> &m_T,
@@ -513,8 +503,8 @@ double update_vertical_lengthscale(
     const std::vector<hpx::shared_future<double *>> &ft_invK,
     const std::vector<hpx::shared_future<double *>> &ft_gradparam,
     const std::vector<hpx::shared_future<double *>> &ft_alpha,
-    gprat_hyper::SEKParams sek_params,
-    gprat_hyper::AdamParams adam_params,
+    gprat::SEKParams sek_params,
+    gprat::AdamParams adam_params,
     const std::size_t n_tile_size,
     const std::size_t n_tiles,
     std::vector<hpx::shared_future<double>> &m_T,
@@ -543,21 +533,20 @@ double update_vertical_lengthscale(
 }
 
 double update_noise_variance(
-    const std::vector<hpx::shared_future<double *>> &ft_invK,
-    const std::vector<hpx::shared_future<double *>> &ft_alpha,
-    gprat_hyper::SEKParams sek_params,
-    gprat_hyper::AdamParams adam_params,
-    const std::size_t n_tile_size,
-    const std::size_t n_tiles,
-    std::vector<hpx::shared_future<double>> &m_T,
-    std::vector<hpx::shared_future<double>> &v_T,
-    const std::vector<hpx::shared_future<double>> &beta1_T,
-    const std::vector<hpx::shared_future<double>> &beta2_T,
-    int iter,
-    gprat::SYCL_DEVICE &sycl_device)
+    const std::vector<hpx::shared_future<double *>> & /*ft_invK*/,
+    const std::vector<hpx::shared_future<double *>> & /*ft_alpha*/,
+    gprat::SEKParams /*sek_params*/,
+    gprat::AdamParams /*adam_params*/,
+    const std::size_t /*n_tile_size*/,
+    const std::size_t /*n_tiles*/,
+    std::vector<hpx::shared_future<double>> & /*m_T*/,
+    std::vector<hpx::shared_future<double>> & /*v_T*/,
+    const std::vector<hpx::shared_future<double>> & /*beta1_T*/,
+    const std::vector<hpx::shared_future<double>> & /*beta2_T*/,
+    int /*iter*/,
+    gprat::SYCL_DEVICE & /*sycl_device*/)
 {
     throw std::logic_error("Function not implemented for GPU");
-    // return 0;
 }
 
 }  // namespace gprat::sycl_backend

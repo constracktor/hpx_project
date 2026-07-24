@@ -29,6 +29,8 @@ cmake_dependent_option(GPRAT_ENABLE_TESTS "Build unit and integration tests"
 
 cmake_dependent_option(GPRAT_ENABLE_MKL "Enable support for Intel oneMKL" OFF
                        "GPRAT_BUILD_CORE" OFF)
+option(GPRAT_ENABLE_BENCHMARK_CACHE_EVICTIONS
+       "Evict data from caches before running BLAS operations" ON)
 
 option(GPRAT_ENABLE_FORMAT_TARGETS "Enable clang-format / cmake-format targets"
        ${PROJECT_IS_TOP_LEVEL})
@@ -86,6 +88,7 @@ if(GPRAT_BUILD_CORE)
 
   # HPX
   find_package(HPX REQUIRED)
+  include(cmake/hpx-apex-compat.cmake)
 
   # Add core subdirectiory
   add_subdirectory(core)
@@ -123,6 +126,11 @@ if(NOT CMAKE_SKIP_INSTALL_RULES AND GPRAT_BUILD_CORE)
     COMPONENT Development)
 
   install(
+    FILES cmake/hpx-apex-compat.cmake
+    DESTINATION "${GPRat_INSTALL_CMAKEDIR}"
+    COMPONENT Development)
+
+  install(
     FILES "${PROJECT_BINARY_DIR}/${package}ConfigVersion.cmake"
     DESTINATION "${GPRat_INSTALL_CMAKEDIR}"
     COMPONENT Development)
@@ -142,6 +150,9 @@ endif()
 # ##############################################################################
 if(GPRAT_ENABLE_EXAMPLES)
   add_subdirectory(examples/gprat_cpp)
+  if(GPRAT_WITH_DISTRIBUTED)
+    add_subdirectory(examples/gprat_distributed)
+  endif()
 endif()
 
 # Tests

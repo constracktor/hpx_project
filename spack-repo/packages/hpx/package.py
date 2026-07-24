@@ -24,6 +24,7 @@ class Hpx(CMakePackage, CudaPackage, ROCmPackage):
 
     version("master", branch="master")
     version("stable", tag="stable", commit="103a7b8e3719a0db948d1abde29de0ff91e070be")
+    version("1.11.0", sha256="01ec47228a2253b41e318bb09c83325a75021eb6ef3262400fbda30ac7389279")
     version("1.10.0", sha256="5720ed7d2460fa0b57bd8cb74fa4f70593fe8675463897678160340526ec3c19")
     version("1.9.1", sha256="1adae9d408388a723277290ddb33c699aa9ea72defadf3f12d4acc913a0ff22d")
     version("1.9.0", sha256="2a8dca78172fbb15eae5a5e9facf26ab021c845f9c09e61b1912e6cf9e72915a")
@@ -171,6 +172,10 @@ class Hpx(CMakePackage, CudaPackage, ROCmPackage):
 
     # Patches and one-off conflicts
 
+    # Asio 1.34.0 removed io_context::work, used by HPX:
+    # https://github.com/chriskohlhoff/asio/commit/a70f2df321ff40c1809773c2c09986745abf8d20.
+    conflicts("^asio@1.34:")
+
     # Certain Asio headers don't compile with nvcc from 1.17.0 onwards with
     # C++17. Starting with CUDA 11.3 they compile again.
     conflicts("^asio@1.17.0:", when="+cuda cxxstd=17 ^cuda@:11.2")
@@ -253,6 +258,7 @@ class Hpx(CMakePackage, CudaPackage, ROCmPackage):
             self.define_from_variant("HPX_WITH_GENERIC_CONTEXT_COROUTINES", "generic_coroutines"),
             self.define("BOOST_ROOT", spec["boost"].prefix),
             self.define("HWLOC_ROOT", spec["hwloc"].prefix),
+            self.define("HPX_WITH_THREAD_IDLE_RATES", True),
             self.define("HPX_WITH_BOOST_ALL_DYNAMIC_LINK", True),
             self.define("BUILD_SHARED_LIBS", True),
             self.define("HPX_DATASTRUCTURES_WITH_ADAPT_STD_TUPLE", False),

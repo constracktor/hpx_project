@@ -1,6 +1,6 @@
 // GPRat
-#include "gprat_c.hpp"
-#include "utils_c.hpp"
+#include "gprat/gprat.hpp"
+#include "gprat/utils.hpp"
 
 // Boost
 #include <boost/json/src.hpp>
@@ -85,7 +85,6 @@ GpratSettings tag_invoke(boost::json::value_to_tag<GpratSettings>, const boost::
 constexpr int device_id = 0;
 constexpr int n_units = 1;
 
-// Save parameters and times to a .txt file with a header
 void append_to_output_file(
     std::string &target,
     int &core,
@@ -99,10 +98,9 @@ void append_to_output_file(
     int &l)
 {
     const std::filesystem::path output_path = std::filesystem::path(GPRAT_CPP_CONFIG_PATH).parent_path() / "output.csv";
-    std::ofstream outfile(output_path, std::ios::app);  // Append mode
+    std::ofstream outfile(output_path, std::ios::app);
     if (outfile.tellp() == 0)
     {
-        // If file is empty, write the header
         outfile << "Target," << "Cores," << "N_tiles," << "N_train," << "N_test," << "N_regressor," << "Opt_iter,"
                 << "Total_time," << "Init_time," << "Cholesky_time," << "Opt_Time," << "Predict_time,"
                 << "Pred_uncer_time," << "Pred_Full_time," << "N_loop\n";
@@ -115,78 +113,78 @@ void append_to_output_file(
 }
 
 void example_cpu(Runtimes &runtimes,
-                 std::pair<int, int> &result,
+                 std::pair<std::size_t, std::size_t> &result,
                  gprat::GP_data &training_input,
                  gprat::GP_data &training_output,
                  gprat::GP_data &test_input,
-                 const int n_tiles,
-                 const int tile_size,
+                 const std::size_t n_tiles,
+                 const std::size_t tile_size,
                  std::vector<bool> trainable,
                  GpratSettings &settings)
 {
-    gprat_hyper::AdamParams hpar = { 0.1, 0.9, 0.999, 1e-8, settings.opt_iter };
+    gprat::AdamParams hpar = { 0.1, 0.9, 0.999, 1e-8, static_cast<std::size_t>(settings.opt_iter) };
 
     auto start_init = std::chrono::high_resolution_clock::now();
-    gprat::GP gp_cpu(
-        training_input.data, training_output.data, n_tiles, tile_size, settings.n_reg, { 1.0, 1.0, 0.1 }, trainable);
+    gprat::GP gp_cpu(training_input.data,
+                     training_output.data,
+                     n_tiles,
+                     tile_size,
+                     static_cast<std::size_t>(settings.n_reg),
+                     { 1.0, 1.0, 0.1 },
+                     trainable);
     auto end_init = std::chrono::high_resolution_clock::now();
     runtimes.init = end_init - start_init;
 
     auto start_cholesky = std::chrono::high_resolution_clock::now();
-    std::vector<std::vector<double>> cholesky_cpu;
     if (settings.cholesky)
     {
-        cholesky_cpu = gp_cpu.cholesky();
+        gp_cpu.cholesky();
     }
     auto end_cholesky = std::chrono::high_resolution_clock::now();
     runtimes.cholesky = settings.cholesky ? end_cholesky - start_cholesky : std::chrono::seconds(-1);
 
     auto start_opt = std::chrono::high_resolution_clock::now();
-    std::vector<double> losses;
     if (!settings.cholesky)
     {
-        losses = gp_cpu.optimize(hpar);
+        gp_cpu.optimize(hpar);
     }
     auto end_opt = std::chrono::high_resolution_clock::now();
     runtimes.opt = settings.cholesky ? std::chrono::seconds(-1) : end_opt - start_opt;
 
     auto start_pred_uncer = std::chrono::high_resolution_clock::now();
-    std::vector<std::vector<double>> sum_cpu;
     if (!settings.cholesky)
     {
-        sum_cpu = gp_cpu.predict_with_uncertainty(test_input.data, result.first, result.second);
+        gp_cpu.predict_with_uncertainty(test_input.data, result.first, result.second);
     }
     auto end_pred_uncer = std::chrono::high_resolution_clock::now();
     runtimes.pred_uncer = settings.cholesky ? std::chrono::seconds(-1) : end_pred_uncer - start_pred_uncer;
 
     auto start_pred_full_cov = std::chrono::high_resolution_clock::now();
-    std::vector<std::vector<double>> full_cpu;
     if (!settings.cholesky)
     {
-        full_cpu = gp_cpu.predict_with_full_cov(test_input.data, result.first, result.second);
+        gp_cpu.predict_with_full_cov(test_input.data, result.first, result.second);
     }
     auto end_pred_full_cov = std::chrono::high_resolution_clock::now();
     runtimes.pred_full_cov = settings.cholesky ? std::chrono::seconds(-1) : end_pred_full_cov - start_pred_full_cov;
 
     auto start_pred = std::chrono::high_resolution_clock::now();
-    std::vector<double> pred_cpu;
     if (!settings.cholesky)
     {
-        pred_cpu = gp_cpu.predict(test_input.data, result.first, result.second);
+        gp_cpu.predict(test_input.data, result.first, result.second);
     }
     auto end_pred = std::chrono::high_resolution_clock::now();
     runtimes.pred = settings.cholesky ? std::chrono::seconds(-1) : end_pred - start_pred;
 }
 
 void example_gpu(Runtimes &runtimes,
-                 std::pair<int, int> &result,
+                 std::pair<std::size_t, std::size_t> &result,
                  gprat::GP_data &training_input,
                  gprat::GP_data &training_output,
                  gprat::GP_data &test_input,
-                 const int n_tiles,
-                 const int tile_size,
+                 const std::size_t n_tiles,
+                 const std::size_t tile_size,
                  std::vector<bool> trainable,
-                 int &n_reg,
+                 std::size_t n_reg,
                  bool &cholesky)
 {
     auto start_init = std::chrono::high_resolution_clock::now();
@@ -200,15 +198,13 @@ void example_gpu(Runtimes &runtimes,
         trainable,
         device_id,
         n_units);
-
     auto end_init = std::chrono::high_resolution_clock::now();
     runtimes.init = end_init - start_init;
 
     auto start_cholesky = std::chrono::high_resolution_clock::now();
-    std::vector<std::vector<double>> cholesky_gpu;
     if (cholesky)
     {
-        cholesky_gpu = gp_gpu.cholesky();
+        gp_gpu.cholesky();
     }
     auto end_cholesky = std::chrono::high_resolution_clock::now();
     runtimes.cholesky = cholesky ? end_cholesky - start_cholesky : std::chrono::seconds(-1);
@@ -217,28 +213,25 @@ void example_gpu(Runtimes &runtimes,
     runtimes.opt = std::chrono::seconds(-1);
 
     auto start_pred_uncer = std::chrono::high_resolution_clock::now();
-    std::vector<std::vector<double>> sum_gpu;
     if (!cholesky)
     {
-        sum_gpu = gp_gpu.predict_with_uncertainty(test_input.data, result.first, result.second);
+        gp_gpu.predict_with_uncertainty(test_input.data, result.first, result.second);
     }
     auto end_pred_uncer = std::chrono::high_resolution_clock::now();
     runtimes.pred_uncer = cholesky ? std::chrono::seconds(-1) : end_pred_uncer - start_pred_uncer;
 
     auto start_pred_full_cov = std::chrono::high_resolution_clock::now();
-    std::vector<std::vector<double>> full_gpu;
     if (!cholesky)
     {
-        full_gpu = gp_gpu.predict_with_full_cov(test_input.data, result.first, result.second);
+        gp_gpu.predict_with_full_cov(test_input.data, result.first, result.second);
     }
     auto end_pred_full_cov = std::chrono::high_resolution_clock::now();
     runtimes.pred_full_cov = cholesky ? std::chrono::seconds(-1) : end_pred_full_cov - start_pred_full_cov;
 
     auto start_pred = std::chrono::high_resolution_clock::now();
-    std::vector<double> pred_gpu;
     if (!cholesky)
     {
-        pred_gpu = gp_gpu.predict(test_input.data, result.first, result.second);
+        gp_gpu.predict(test_input.data, result.first, result.second);
     }
     auto end_pred = std::chrono::high_resolution_clock::now();
     runtimes.pred = cholesky ? std::chrono::seconds(-1) : end_pred - start_pred;
@@ -259,7 +252,6 @@ int main(int argc, char *argv[])
         const std::string content(iterator_type{ ifs }, iterator_type{});
         settings = boost::json::value_to<gprat::example::GpratSettings>(boost::json::parse(content));
 
-        // Resolve data file paths relative to the config file's directory
         const std::filesystem::path config_dir = std::filesystem::path(GPRAT_CPP_CONFIG_PATH).parent_path();
         auto resolve = [&](std::string &p)
         {
@@ -280,7 +272,7 @@ int main(int argc, char *argv[])
 
     if (argc > 1 && std::strcmp(argv[1], "--use-gpu") == 0)
     {
-        if (!utils::compiled_with_cuda() && !utils::compiled_with_sycl())
+        if (!gprat::compiled_with_cuda() && !gprat::compiled_with_sycl())
         {
             std::cerr << "Error: GPU support is not available. Please compile with CUDA or SYCL support.\n";
             return 1;
@@ -293,11 +285,11 @@ int main(int argc, char *argv[])
         else
         {
             use_gpu = true;
-            if (utils::compiled_with_cuda())
+            if (gprat::compiled_with_cuda())
             {
                 std::cout << "Using CUDA GPU for computations.\n";
             }
-            else if (utils::compiled_with_sycl())
+            else if (gprat::compiled_with_sycl())
             {
                 std::cout << "Using SYCL GPU for computations.\n";
             }
@@ -308,20 +300,15 @@ int main(int argc, char *argv[])
         std::cout << "Using CPU for computations.\n";
     }
 
-    std::string target = use_gpu ? utils::compiled_with_cuda() ? "cuda" : "sycl" : "cpu";
-
-    int training_baseline =
-        settings.train_size_start > settings.n_tiles_start ? settings.train_size_start : settings.n_tiles_start;
+    std::string target = use_gpu ? gprat::compiled_with_cuda() ? "cuda" : "sycl" : "cpu";
 
     // Loop over cores
     for (int core = settings.start_cores; core <= settings.end_cores; core *= 2)
     {
-        // Create new argc and argv to include the --hpx:threads argument
         std::vector<std::string> args(argv, argv + argc);
         args.erase(args.begin() + argc - 1);
         args.push_back("--hpx:threads=" + std::to_string(core));
 
-        // Convert the arguments to char* array
         std::vector<char *> cstr_args;
         for (auto &arg : args)
         {
@@ -331,12 +318,12 @@ int main(int argc, char *argv[])
         int new_argc = static_cast<int>(cstr_args.size());
         char **new_argv = cstr_args.data();
 
-        utils::start_hpx_runtime(new_argc, new_argv);
+        gprat::start_hpx_runtime(new_argc, new_argv);
 
         // Loop over tiles
         for (int n_tiles = settings.n_tiles_start; n_tiles <= settings.n_tiles_end; n_tiles *= settings.step_tiles)
         {
-            training_baseline = settings.train_size_start > n_tiles ? settings.train_size_start : n_tiles;
+            int training_baseline = settings.train_size_start > n_tiles ? settings.train_size_start : n_tiles;
 
             // Loop over training sizes
             for (int train_size = training_baseline; train_size <= settings.train_size_end;
@@ -347,12 +334,16 @@ int main(int argc, char *argv[])
                 // Loop over repetitions
                 for (int l = 0; l < settings.loop; l++)
                 {
-                    int tile_size = utils::compute_train_tile_size(train_size, n_tiles);
-                    auto result = utils::compute_test_tiles(n_test, n_tiles, tile_size);
+                    auto n_tiles_st = static_cast<std::size_t>(n_tiles);
+                    auto train_size_st = static_cast<std::size_t>(train_size);
+                    auto n_test_st = static_cast<std::size_t>(n_test);
+                    auto n_reg_st = static_cast<std::size_t>(settings.n_reg);
+                    std::size_t tile_size = gprat::compute_train_tile_size(train_size_st, n_tiles_st);
+                    auto result = gprat::compute_test_tiles(n_test_st, n_tiles_st, tile_size);
 
-                    gprat::GP_data training_input(settings.train_in_file, train_size, settings.n_reg);
-                    gprat::GP_data training_output(settings.train_out_file, train_size, settings.n_reg);
-                    gprat::GP_data test_input(settings.test_in_file, n_test, settings.n_reg);
+                    gprat::GP_data training_input(settings.train_in_file, train_size_st, n_reg_st);
+                    gprat::GP_data training_output(settings.train_out_file, train_size_st, n_reg_st);
+                    gprat::GP_data test_input(settings.test_in_file, n_test_st, n_reg_st);
 
                     gprat::example::Runtimes runtimes;
                     std::vector<bool> trainable = { true, true, true };
@@ -367,10 +358,10 @@ int main(int argc, char *argv[])
                             training_input,
                             training_output,
                             test_input,
-                            n_tiles,
+                            n_tiles_st,
                             tile_size,
                             trainable,
-                            settings.n_reg,
+                            n_reg_st,
                             settings.cholesky);
                     }
                     else
@@ -381,7 +372,7 @@ int main(int argc, char *argv[])
                             training_input,
                             training_output,
                             test_input,
-                            n_tiles,
+                            n_tiles_st,
                             tile_size,
                             trainable,
                             settings);
@@ -405,7 +396,7 @@ int main(int argc, char *argv[])
             }
         }
 
-        utils::stop_hpx_runtime();
+        gprat::stop_hpx_runtime();
     }
 
     return 0;

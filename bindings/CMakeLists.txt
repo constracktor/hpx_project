@@ -1,5 +1,5 @@
 # try finding pybind11
-set(GPRat_pybind11_VERSION 2.10.3)
+set(GPRat_pybind11_VERSION 2.13.6)
 find_package(pybind11 ${GPRat_pybind11_VERSION} QUIET)
 if(pybind11_FOUND)
   message(STATUS "Found package pybind11.")

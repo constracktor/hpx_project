@@ -1,13 +1,17 @@
-#include "gpu/cuda/gp_algorithms.cuh"
+#include "gprat/gpu/gp_algorithms.cuh"
 
-#include "gp_kernels.hpp"
-#include "gpu/cuda/cuda_kernels.cuh"
-#include "gpu/cuda/cuda_utils.cuh"
-#include "gpu/cuda/gp_optimizer.cuh"
-#include "target.hpp"
+#include "gprat/gpu/cuda_kernels.cuh"
+#include "gprat/gpu/cuda_utils.cuh"
+#include "gprat/gpu/gp_optimizer.cuh"
+#include "gprat/kernels.hpp"
+#include "gprat/target.hpp"
+#include "gprat/tile_data.hpp"
+
 #include <cuda_runtime.h>
 #include <hpx/algorithm.hpp>
 #include <hpx/async_cuda/cuda_exception.hpp>
+
+GPRAT_NS_BEGIN
 
 namespace gpu
 {
@@ -20,7 +24,7 @@ __global__ void gen_tile_covariance_kernel(
     const std::size_t n_regressors,
     const std::size_t tile_row,
     const std::size_t tile_column,
-    const gprat_hyper::SEKParams sek_params)
+    const SEKParams sek_params)
 {
     // Compute the global indices of the thread
     unsigned int i = blockIdx.y * blockDim.y + threadIdx.y;
@@ -59,8 +63,8 @@ double *gen_tile_covariance(const double *d_input,
                             const std::size_t tile_column,
                             const std::size_t n_tile_size,
                             const std::size_t n_regressors,
-                            const gprat_hyper::SEKParams sek_params,
-                            gprat::CUDA_GPU &gpu)
+                            const SEKParams sek_params,
+                            CUDA_GPU &gpu)
 {
     double *d_tile;
 
@@ -85,7 +89,7 @@ __global__ void gen_tile_full_prior_covariance_kernel(
     const std::size_t n_regressors,
     const std::size_t tile_row,
     const std::size_t tile_column,
-    const gprat_hyper::SEKParams sek_params)
+    const SEKParams sek_params)
 {
     unsigned int i = blockIdx.y * blockDim.y + threadIdx.y;
     unsigned int j = blockIdx.x * blockDim.x + threadIdx.x;
@@ -117,8 +121,8 @@ double *gen_tile_full_prior_covariance(
     const std::size_t tile_colums,
     const std::size_t n_tile_size,
     const std::size_t n_regressors,
-    const gprat_hyper::SEKParams sek_params,
-    gprat::CUDA_GPU &gpu)
+    const SEKParams sek_params,
+    CUDA_GPU &gpu)
 {
     double *d_tile;
 
@@ -143,7 +147,7 @@ __global__ void gen_tile_prior_covariance_kernel(
     const std::size_t n_regressors,
     const std::size_t tile_row,
     const std::size_t tile_column,
-    const gprat_hyper::SEKParams sek_params)
+    const SEKParams sek_params)
 {
     unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -174,8 +178,8 @@ double *gen_tile_prior_covariance(
     const std::size_t tile_column,
     const std::size_t n_tile_size,
     const std::size_t n_regressors,
-    const gprat_hyper::SEKParams sek_params,
-    gprat::CUDA_GPU &gpu)
+    const SEKParams sek_params,
+    CUDA_GPU &gpu)
 {
     double *d_tile;
 
@@ -202,7 +206,7 @@ __global__ void gen_tile_cross_covariance_kernel(
     const std::size_t tile_row,
     const std::size_t tile_column,
     const std::size_t n_regressors,
-    const gprat_hyper::SEKParams sek_params)
+    const SEKParams sek_params)
 {
     unsigned int i = blockIdx.y * blockDim.y + threadIdx.y;
     unsigned int j = blockIdx.x * blockDim.x + threadIdx.x;
@@ -235,8 +239,8 @@ double *gen_tile_cross_covariance(
     const std::size_t n_row_tile_size,
     const std::size_t n_column_tile_size,
     const std::size_t n_regressors,
-    const gprat_hyper::SEKParams sek_params,
-    gprat::CUDA_GPU &gpu)
+    const SEKParams sek_params,
+    CUDA_GPU &gpu)
 {
     double *d_tile;
 
@@ -265,7 +269,7 @@ double *gen_tile_cross_covariance(
 hpx::shared_future<double *> gen_tile_cross_cov_T(std::size_t n_row_tile_size,
                                                   std::size_t n_column_tile_size,
                                                   const hpx::shared_future<double *> f_cross_covariance_tile,
-                                                  gprat::CUDA_GPU &gpu)
+                                                  CUDA_GPU &gpu)
 {
     double *transposed;
     check_cuda_error(cudaMalloc(&transposed, n_row_tile_size * n_column_tile_size * sizeof(double)));
@@ -293,8 +297,7 @@ __global__ void gen_tile_output_kernel(double *tile, const double *output, std::
     }
 }
 
-double *
-gen_tile_output(const std::size_t row, const std::size_t n_tile_size, const double *d_output, gprat::CUDA_GPU &gpu)
+double *gen_tile_output(const std::size_t row, const std::size_t n_tile_size, const double *d_output, CUDA_GPU &gpu)
 {
     dim3 threads_per_block(256);
     dim3 n_blocks((n_tile_size + 255) / 256);
@@ -311,7 +314,7 @@ gen_tile_output(const std::size_t row, const std::size_t n_tile_size, const doub
     return d_tile;
 }
 
-double *gen_tile_zeros(std::size_t n_tile_size, gprat::CUDA_GPU &gpu)
+double *gen_tile_zeros(std::size_t n_tile_size, CUDA_GPU &gpu)
 {
     double *d_tile;
     cudaStream_t stream = gpu.next_stream();
@@ -345,8 +348,8 @@ std::vector<hpx::shared_future<double *>> assemble_tiled_covariance_matrix(
     const std::size_t n_tiles,
     const std::size_t n_tile_size,
     const std::size_t n_regressors,
-    const gprat_hyper::SEKParams sek_params,
-    gprat::CUDA_GPU &gpu)
+    const SEKParams sek_params,
+    CUDA_GPU &gpu)
 {
     std::vector<hpx::shared_future<double *>> d_tiles(n_tiles * n_tiles);
 
@@ -369,8 +372,8 @@ std::vector<hpx::shared_future<double *>> assemble_tiled_covariance_matrix(
     return d_tiles;
 }
 
-std::vector<hpx::shared_future<double *>> assemble_alpha_tiles(
-    const double *d_output, const std::size_t n_tiles, const std::size_t n_tile_size, gprat::CUDA_GPU &gpu)
+std::vector<hpx::shared_future<double *>>
+assemble_alpha_tiles(const double *d_output, const std::size_t n_tiles, const std::size_t n_tile_size, CUDA_GPU &gpu)
 {
     std::vector<hpx::shared_future<double *>> alpha_tiles(n_tiles);
     for (std::size_t i = 0; i < n_tiles; i++)
@@ -390,8 +393,8 @@ std::vector<hpx::shared_future<double *>> assemble_cross_covariance_tiles(
     const std::size_t m_tile_size,
     const std::size_t n_tile_size,
     const std::size_t n_regressors,
-    const gprat_hyper::SEKParams sek_params,
-    gprat::CUDA_GPU &gpu)
+    const SEKParams sek_params,
+    CUDA_GPU &gpu)
 {
     std::vector<hpx::shared_future<double *>> cross_covariance_tiles;
     cross_covariance_tiles.resize(m_tiles * n_tiles);
@@ -416,7 +419,7 @@ std::vector<hpx::shared_future<double *>> assemble_cross_covariance_tiles(
 }
 
 std::vector<hpx::shared_future<double *>>
-assemble_tiles_with_zeros(std::size_t n_tile_size, std::size_t n_tiles, gprat::CUDA_GPU &gpu)
+assemble_tiles_with_zeros(std::size_t n_tile_size, std::size_t n_tiles, CUDA_GPU &gpu)
 {
     std::vector<hpx::shared_future<double *>> tiles(n_tiles);
     for (std::size_t i = 0; i < n_tiles; i++)
@@ -431,8 +434,8 @@ std::vector<hpx::shared_future<double *>> assemble_prior_K_tiles(
     const std::size_t m_tiles,
     const std::size_t m_tile_size,
     const std::size_t n_regressors,
-    const gprat_hyper::SEKParams sek_params,
-    gprat::CUDA_GPU &gpu)
+    const SEKParams sek_params,
+    CUDA_GPU &gpu)
 {
     std::vector<hpx::shared_future<double *>> d_prior_K_tiles;
     d_prior_K_tiles.resize(m_tiles);
@@ -449,8 +452,8 @@ std::vector<hpx::shared_future<double *>> assemble_prior_K_tiles_full(
     const std::size_t m_tiles,
     const std::size_t m_tile_size,
     const std::size_t n_regressors,
-    const gprat_hyper::SEKParams sek_params,
-    gprat::CUDA_GPU &gpu)
+    const SEKParams sek_params,
+    CUDA_GPU &gpu)
 {
     std::vector<hpx::shared_future<double *>> d_prior_K_tiles(m_tiles * m_tiles);
     for (std::size_t i = 0; i < m_tiles; i++)
@@ -483,7 +486,7 @@ std::vector<hpx::shared_future<double *>> assemble_t_cross_covariance_tiles(
     const std::size_t m_tiles,
     const std::size_t n_tile_size,
     const std::size_t m_tile_size,
-    gprat::CUDA_GPU &gpu)
+    CUDA_GPU &gpu)
 {
     std::vector<hpx::shared_future<double *>> d_t_cross_covariance_tiles(m_tiles * n_tiles);
     for (std::size_t i = 0; i < m_tiles; i++)
@@ -502,7 +505,7 @@ std::vector<hpx::shared_future<double *>> assemble_t_cross_covariance_tiles(
 }
 
 std::vector<hpx::shared_future<double *>> assemble_y_tiles(
-    const double *d_training_output, const std::size_t n_tiles, const std::size_t n_tile_size, gprat::CUDA_GPU &gpu)
+    const double *d_training_output, const std::size_t n_tiles, const std::size_t n_tile_size, CUDA_GPU &gpu)
 {
     std::vector<hpx::shared_future<double *>> d_y_tiles(n_tiles);
     for (std::size_t i = 0; i < n_tiles; i++)
@@ -512,10 +515,8 @@ std::vector<hpx::shared_future<double *>> assemble_y_tiles(
     return d_y_tiles;
 }
 
-std::vector<double> copy_tiled_vector_to_host_vector(std::vector<hpx::shared_future<double *>> &d_tiles,
-                                                     std::size_t n_tile_size,
-                                                     std::size_t n_tiles,
-                                                     gprat::CUDA_GPU &gpu)
+std::vector<double> copy_tiled_vector_to_host_vector(
+    std::vector<hpx::shared_future<double *>> &d_tiles, std::size_t n_tile_size, std::size_t n_tiles, CUDA_GPU &gpu)
 {
     std::vector<double> h_vector(n_tiles * n_tile_size);
     std::vector<cudaStream_t> streams(n_tiles);
@@ -533,13 +534,13 @@ std::vector<double> copy_tiled_vector_to_host_vector(std::vector<hpx::shared_fut
     return h_vector;
 }
 
-std::vector<std::vector<double>> move_lower_tiled_matrix_to_host(
+std::vector<mutable_tile_data<double>> move_lower_tiled_matrix_to_host(
     const std::vector<hpx::shared_future<double *>> &d_tiles,
     const std::size_t n_tile_size,
     const std::size_t n_tiles,
-    gprat::CUDA_GPU &gpu)
+    CUDA_GPU &gpu)
 {
-    std::vector<std::vector<double>> h_tiles(n_tiles * n_tiles);
+    std::vector<mutable_tile_data<double>> h_tiles(n_tiles * n_tiles);
 
     std::vector<cudaStream_t> streams(n_tiles * (n_tiles + 1) / 2);
     for (std::size_t i = 0; i < n_tiles; ++i)
@@ -547,7 +548,7 @@ std::vector<std::vector<double>> move_lower_tiled_matrix_to_host(
         for (std::size_t j = 0; j <= i; ++j)
         {
             streams[i] = gpu.next_stream();
-            h_tiles[i * n_tiles + j].resize(n_tile_size * n_tile_size);
+            h_tiles[i * n_tiles + j] = mutable_tile_data<double>(n_tile_size * n_tile_size);
             check_cuda_error(cudaMemcpyAsync(
                 h_tiles[i * n_tiles + j].data(),
                 d_tiles[i * n_tiles + j].get(),
@@ -585,3 +586,5 @@ void free_full_tiled_matrix(const std::vector<hpx::shared_future<double *>> &d_t
 }
 
 }  // end of namespace gpu
+
+GPRAT_NS_END

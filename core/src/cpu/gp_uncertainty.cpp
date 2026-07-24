@@ -1,21 +1,22 @@
-#include "cpu/gp_uncertainty.hpp"
+#include "gprat/cpu/gp_uncertainty.hpp"
+
+#include "gprat/tile_data.hpp"
+
+GPRAT_NS_BEGIN
 
 namespace cpu
 {
 
-hpx::shared_future<std::vector<double>> get_matrix_diagonal(hpx::shared_future<std::vector<double>> f_A, std::size_t M)
+mutable_tile_data<double> get_matrix_diagonal(const const_tile_data<double> &A, std::size_t M)
 {
-    auto A = f_A.get();
-    // Preallocate memory
-    std::vector<double> tile;
-    tile.reserve(M);
-    // Add elements
+    mutable_tile_data<double> tile(M);
     for (std::size_t i = 0; i < M; ++i)
     {
-        tile.push_back(A[i * M + i]);
+        tile.data()[i] = A.data()[i * M + i];
     }
-
-    return hpx::make_ready_future(std::move(tile));
+    return tile;
 }
 
 }  // end of namespace cpu
+
+GPRAT_NS_END

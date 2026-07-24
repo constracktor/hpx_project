@@ -42,16 +42,112 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(Catch2)
 
+# catch_discover_tests registers each Catch2 test case as a separate CTest
+# entry.
+list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+include(Catch)
+
 find_package(Boost REQUIRED)
 
 # ---- Tests ----
 
-add_executable(GPRat_test_output_correctness src/output_correctness.cpp)
+add_executable(GPRat_test_output_correctness src/test_data.hpp
+                                             src/output_correctness.cpp)
 target_link_libraries(GPRat_test_output_correctness
                       PRIVATE GPRat::core Catch2::Catch2WithMain Boost::boost)
 target_compile_features(GPRat_test_output_correctness PRIVATE cxx_std_17)
+# APEX's malloc wrapper initialises internal containers during process startup.
+# With _GLIBCXX_ASSERTIONS enabled those accesses trip bounds checks before APEX
+# is fully set up.  Undefine the assertion macro for this target only.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(GPRat_test_output_correctness
+                         PRIVATE -U_GLIBCXX_ASSERTIONS)
+endif()
+catch_discover_tests(GPRat_test_output_correctness WORKING_DIRECTORY
+                     "${CMAKE_CURRENT_LIST_DIR}")
 
-add_test(
-  NAME GPRat_test_output_correctness
-  COMMAND GPRat_test_output_correctness
-  WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
+add_executable(GPRat_test_unit src/unit_tests.cpp)
+target_link_libraries(GPRat_test_unit PRIVATE GPRat::core
+                                              Catch2::Catch2WithMain)
+target_compile_features(GPRat_test_unit PRIVATE cxx_std_17)
+catch_discover_tests(GPRat_test_unit WORKING_DIRECTORY
+                     "${CMAKE_CURRENT_LIST_DIR}")
+
+# Multi-locality smoke tests for examples/gprat_distributed. Off by default:
+# they need an HPX build with networking enabled (networking=none, used by the
+# default gprat_cpu_gcc Spack environment, rejects --hpx:localities outright) --
+# see spack-repo/environments/setup_gprat_cpu_gcc_dist.sh and the "To run the
+# distributed GPRat benchmark" section of the top-level README for how to build
+# one.
+option(
+  GPRAT_TEST_MULTI_LOCALITY
+  "Enable gprat_distributed smoke tests across multiple HPX localities (requires an HPX build with networking enabled)"
+  OFF)
+if(GPRAT_TEST_MULTI_LOCALITY)
+  if(NOT TARGET gprat_distributed)
+    message(
+      FATAL_ERROR
+        "GPRAT_TEST_MULTI_LOCALITY requires GPRAT_WITH_DISTRIBUTED and GPRAT_ENABLE_EXAMPLES to be ON"
+    )
+  endif()
+  foreach(n_localities 1 2 4)
+    add_test(
+      NAME GPRat_test_distributed_multi_locality_${n_localities}
+      COMMAND
+        bash
+        "${CMAKE_CURRENT_LIST_DIR}/scripts/run_distributed_multi_locality.sh"
+        "$<TARGET_FILE:gprat_distributed>" ${n_localities} --start 128 --end
+        128 --step 2 --tiles 2 --loop 1 --output_csv /dev/null)
+    set_tests_properties(
+      GPRat_test_distributed_multi_locality_${n_localities}
+      PROPERTIES TIMEOUT
+                 120
+                 # The binary resolves its default data/data_1024/... paths
+                 # relative to the current working directory, matching
+                 # run_gprat_distributed.sh's `cd "$GPRAT_ROOT"` before invoking
+                 # it.
+                 WORKING_DIRECTORY
+                 "${CMAKE_SOURCE_DIR}"
+                 # Node 0 of each run binds HPX's default AGAS/parcel TCP port
+                 # on localhost; running two of these tests concurrently makes
+                 # the second's bind fail ("Address already in use"), which then
+                 # hangs its orphaned peer processes until they hit TIMEOUT.
+                 # Force them to run one at a time.
+                 RUN_SERIAL
+                 TRUE)
+  endforeach()
+
+  # gprat::GP (used by GPRat_test_output_correctness) always uses
+  # tiled_scheduler_local, which is locality-oblivious -- it never exercises the
+  # distributed action dispatch no matter how many localities are running. This
+  # binary instead calls the same free functions examples/gprat_distributed uses
+  # with tiled_scheduler_sma, so running it across multiple localities actually
+  # verifies that dispatch, against the same data_1024/output.json baseline.
+  add_executable(GPRat_test_distributed_output_correctness
+                 src/test_data.hpp src/distributed_output_correctness.cpp)
+  target_link_libraries(GPRat_test_distributed_output_correctness
+                        PRIVATE GPRat::core Boost::boost)
+  target_compile_features(GPRat_test_distributed_output_correctness
+                          PRIVATE cxx_std_17)
+  # Baked-in default data/ directory, overridable via the GPRAT_ROOT env var
+  # (see test_data.hpp's get_data_directory()) so this always agrees with
+  # GPRat_test_output_correctness on which data_1024/output.json baseline to
+  # read/write.
+  target_compile_definitions(
+    GPRat_test_distributed_output_correctness
+    PRIVATE GPRAT_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
+
+  foreach(n_localities 1 2 4)
+    add_test(
+      NAME GPRat_test_distributed_output_correctness_${n_localities}
+      COMMAND
+        bash
+        "${CMAKE_CURRENT_LIST_DIR}/scripts/run_distributed_multi_locality.sh"
+        "$<TARGET_FILE:GPRat_test_distributed_output_correctness>"
+        ${n_localities})
+    set_tests_properties(
+      GPRat_test_distributed_output_correctness_${n_localities}
+      PROPERTIES TIMEOUT 120 WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" RUN_SERIAL
+                 TRUE)
+  endforeach()
+endif()

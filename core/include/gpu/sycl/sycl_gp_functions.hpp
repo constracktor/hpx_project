@@ -1,9 +1,9 @@
 #ifndef SYCL_GP_FUNCTIONS_H
 #define SYCL_GP_FUNCTIONS_H
 
-#include "gp_hyperparameters.hpp"
-#include "gp_kernels.hpp"
-#include "target.hpp"
+#include "gprat/hyperparameters.hpp"
+#include "gprat/kernels.hpp"
+#include "gprat/target.hpp"
 
 namespace gprat::sycl_backend
 {
@@ -28,7 +28,7 @@ std::vector<double>
 predict(const std::vector<double> &training_input,
         const std::vector<double> &training_output,
         const std::vector<double> &test_input,
-        const gprat_hyper::SEKParams &sek_params,
+        const gprat::SEKParams &sek_params,
         int n_tiles,
         int n_tile_size,
         int m_tiles,
@@ -56,7 +56,7 @@ std::vector<std::vector<double>> predict_with_uncertainty(
     const std::vector<double> &training_input,
     const std::vector<double> &training_output,
     const std::vector<double> &test_input,
-    const gprat_hyper::SEKParams &sek_params,
+    const gprat::SEKParams &sek_params,
     int n_tiles,
     int n_tile_size,
     int m_tiles,
@@ -84,7 +84,7 @@ std::vector<std::vector<double>> predict_with_full_cov(
     const std::vector<double> &training_input,
     const std::vector<double> &training_output,
     const std::vector<double> &test_data,
-    const gprat_hyper::SEKParams &sek_params,
+    const gprat::SEKParams &sek_params,
     int n_tiles,
     int n_tile_size,
     int m_tiles,
@@ -107,7 +107,7 @@ std::vector<std::vector<double>> predict_with_full_cov(
  */
 double compute_loss(const std::vector<double> &training_input,
                     const std::vector<double> &training_output,
-                    const gprat_hyper::SEKParams &sek_params,
+                    const gprat::SEKParams &sek_params,
                     int n_tiles,
                     int n_tile_size,
                     int n_regressors,
@@ -127,7 +127,7 @@ double compute_loss(const std::vector<double> &training_input,
  */
 std::vector<std::vector<double>>
 cholesky(const std::vector<double> &training_input,
-         const gprat_hyper::SEKParams &sek_params,
+         const gprat::SEKParams &sek_params,
          int n_tiles,
          int n_tile_size,
          int n_regressors,

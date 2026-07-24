@@ -74,6 +74,13 @@ then
 
 		fi
 
+		if [[ "$1" == "cuda" || ( "$1" == "sycl" && "$2" == "nvidia" ) ]]; then
+
+			module load cuda/12.0.1
+			module load clang/17.0.1
+
+		fi
+
 		if [[ "$1" == "sycl" ]]; then
 
 			# Add oneMath installation to LD_LIBRARY_PATH if gpu is specified
@@ -87,11 +94,37 @@ then
 				ONEMATH_PATH="${ONEMATH_AMD_ROOT}/lib/"
 				LD_LIBRARY_PATH="$ONEMATH_PATH:$LD_LIBRARY_PATH"
 
+				# ROCm runtime libraries
+				ROCM_PATH=${ROCM_PATH:-/opt/rocm-6.4.0}
+				if [[ -d "$ROCM_PATH" ]]; then
+					export LD_LIBRARY_PATH="$ROCM_PATH/lib:$ROCM_PATH/lib64:$ROCM_PATH/hip/lib:$LD_LIBRARY_PATH"
+					export ROCM_PATH
+				fi
+
+				# Compatibility shim: libamd_comgr.so.2 → libamd_comgr.so.3 for icpx HIP adapter
+				COMGR_COMPAT_DIR="/data/scratch-simcl1/breyerml/Programs/.modulefiles/icpx"
+				if [[ -d "$COMGR_COMPAT_DIR" ]]; then
+					export LD_LIBRARY_PATH="$COMGR_COMPAT_DIR:$LD_LIBRARY_PATH"
+				fi
+
+				# Intel oneAPI compiler runtime libraries (needed by SYCL AMD shared objects)
+				ONEAPI_SETVARS="/import/sgs.scratch-simcl1/breyerml/Programs/spack/opt/spack/linux-zen4/intel-oneapi-compilers-2025.1.1-5ynklzzqslh265azbglzqdtecdghl7ob/setvars.sh"
+				if ! command -v icpx &>/dev/null && [[ -f "$ONEAPI_SETVARS" ]]; then
+					ONEAPI_COMPILER_ROOT="$(dirname $ONEAPI_SETVARS)/compiler/2025.1"
+					export PATH="$ONEAPI_COMPILER_ROOT/bin:$PATH"
+					export LD_LIBRARY_PATH="$ONEAPI_COMPILER_ROOT/lib:$LD_LIBRARY_PATH"
+				elif command -v icpx &>/dev/null; then
+					ONEAPI_COMPILER_ROOT="$(dirname $(dirname $(which icpx)))"
+					export LD_LIBRARY_PATH="$ONEAPI_COMPILER_ROOT/lib:$LD_LIBRARY_PATH"
+				fi
+
+				export HSA_XNACK=1
+
 			elif [[ "$2" == "intel" ]]; then
 
 				echo "Machine $HOSTNAME does not have an Intel GPU." 1>&2
 				exit 1
-				
+
 			elif [[ "$2" != "nvidia" ]]; then
 
 				echo "Please specify gpu vendor: nvidia/amd/intel"
@@ -107,7 +140,7 @@ then
 		if spack env list | grep -q "gprat_cpu_gcc"; then
 			echo "Found gprat_cpu_gcc environment, activating it."
 			spack env activate gprat_cpu_gcc
-			module load gcc/14.2.0
+			module load gcc/14.1.0
 			LD_LIBRARY_PATH=$(spack location -i hpx)/lib:$LD_LIBRARY_PATH
 			LD_LIBRARY_PATH=$(spack location -i openblas)/lib:$LD_LIBRARY_PATH
 			LD_LIBRARY_PATH=$(spack location -i intel-oneapi-mkl)/lib:$LD_LIBRARY_PATH
@@ -175,7 +208,25 @@ if [[ "$HOSTNAME" == "pcsgs04" ]]; then
 
 fi
 
+### INSTALL MATCHING GPRAT BUILD ##################################################################
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GPRAT_ROOT="$SCRIPT_DIR/../.."
+
+if [[ "$1" == "cuda" ]]; then
+    GPRAT_BUILD_DIR="$GPRAT_ROOT/build/release-linux-cuda"
+elif [[ "$1" == "sycl" ]]; then
+    GPRAT_BUILD_DIR="$GPRAT_ROOT/build/release-linux-sycl"
+else
+    GPRAT_BUILD_DIR="$GPRAT_ROOT/build/release-linux"
+fi
+
+cmake --install "$GPRAT_BUILD_DIR" --prefix "$SCRIPT_DIR"
+cp "$GPRAT_BUILD_DIR"/bindings/gprat.cpython-*.so "$SCRIPT_DIR/lib/"
+
 ### EXECUTION #####################################################################################
+
+cd "$SCRIPT_DIR"
 
 end_cores=$(python3 -c "import json; print(json.load(open('config.json'))['END_CORES'])")
 core_count=$((end_cores * 2))

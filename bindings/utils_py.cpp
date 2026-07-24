@@ -1,5 +1,6 @@
-#include "target.hpp"
-#include "utils_c.hpp"
+#include "gprat/target.hpp"
+#include "gprat/utils.hpp"
+
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
@@ -32,7 +33,7 @@ void start_hpx_wrapper(std::vector<std::string> args, std::size_t n_cores)
     }
     argv.push_back(nullptr);
     int argc = static_cast<int>(args.size());
-    utils::start_hpx_runtime(argc, argv.data());
+    gprat::start_hpx_runtime(argc, argv.data());
 }
 
 /**
@@ -43,7 +44,7 @@ void start_hpx_wrapper(std::vector<std::string> args, std::size_t n_cores)
 void init_utils(py::module &m)
 {
     m.def("compute_train_tiles",
-          &utils::compute_train_tiles,
+          &gprat::compute_train_tiles,
           py::arg("n_samples"),
           py::arg("n_tile_size"),
           R"pbdoc(
@@ -58,7 +59,7 @@ void init_utils(py::module &m)
           )pbdoc");
 
     m.def("compute_train_tile_size",
-          &utils::compute_train_tile_size,
+          &gprat::compute_train_tile_size,
           py::arg("n_samples"),
           py::arg("n_tiles"),
           R"pbdoc(
@@ -73,7 +74,7 @@ void init_utils(py::module &m)
           )pbdoc");
 
     m.def("compute_test_tiles",
-          &utils::compute_test_tiles,
+          &gprat::compute_test_tiles,
           py::arg("m_samples"),
           py::arg("n_tiles"),
           py::arg("n_tile_size"),
@@ -90,7 +91,7 @@ void init_utils(py::module &m)
           )pbdoc");
 
     m.def("print_vector",
-          &utils::print_vector,
+          &gprat::print_vector,
           py::arg("vec"),
           py::arg("start") = 0,
           py::arg("end") = -1,
@@ -98,12 +99,12 @@ void init_utils(py::module &m)
           "Print elements of a vector with optional start, end, and separator parameters");
 
     m.def("start_hpx", &start_hpx_wrapper, py::arg("args"), py::arg("n_cores"));  // Using the wrapper function
-    m.def("resume_hpx", &utils::resume_hpx_runtime);
-    m.def("suspend_hpx", &utils::suspend_hpx_runtime);
-    m.def("stop_hpx", &utils::stop_hpx_runtime);
+    m.def("resume_hpx", &gprat::resume_hpx_runtime);
+    m.def("suspend_hpx", &gprat::suspend_hpx_runtime);
+    m.def("stop_hpx", &gprat::stop_hpx_runtime);
 
-    m.def("compiled_with_cuda", &utils::compiled_with_cuda, "Check if the code was compiled with CUDA support");
-    m.def("compiled_with_sycl", &utils::compiled_with_sycl, "Check if the code was compiled with SYCL support");
+    m.def("compiled_with_cuda", &gprat::compiled_with_cuda, "Check if the code was compiled with CUDA support");
+    m.def("compiled_with_sycl", &gprat::compiled_with_sycl, "Check if the code was compiled with SYCL support");
 
     m.def("print_available_gpus", &gprat::print_available_gpus, "Print available GPUs with their properties");
     m.def("gpu_count", &gprat::gpu_count, "Return the number of available GPUs");

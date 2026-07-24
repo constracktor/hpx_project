@@ -2,9 +2,9 @@
 #define SYCL_GP_OPTIMIZER_H
 
 // GPRat
-#include "gp_hyperparameters.hpp"
-#include "gp_kernels.hpp"
-#include "target.hpp"
+#include "gprat/hyperparameters.hpp"
+#include "gprat/kernels.hpp"
+#include "gprat/target.hpp"
 
 // HPX
 #include <hpx/future.hpp>

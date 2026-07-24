@@ -4,7 +4,7 @@
 #define WORK_GROUP_SIZE 16
 
 // GPRat
-#include "target.hpp"
+#include "gprat/target.hpp"
 
 // HPX
 #include <hpx/algorithm.hpp>

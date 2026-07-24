@@ -4,7 +4,8 @@
 // Includes ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // GPRat
-#include "gp_kernels.hpp"
+#include "gprat/kernels.hpp"
+
 #include "sycl_utils.hpp"
 
 // Transpose kernel ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -108,7 +109,7 @@ class GenTileCovarianceKernel
         const std::size_t n_regressors,
         const std::size_t tile_row,
         const std::size_t tile_column,
-        const gprat_hyper::SEKParams sek_params) :
+        const gprat::SEKParams sek_params) :
         d_tile(d_tile),
         d_input(d_input_input),
         n_tile_size(n_tile_size),
@@ -182,7 +183,7 @@ class GenTileFullPriorCovarianceKernel
         const std::size_t n_regressors,
         const std::size_t tile_row,
         const std::size_t tile_column,
-        const gprat_hyper::SEKParams sek_params) :
+        const gprat::SEKParams sek_params) :
         d_tile(d_tile),
         d_input(d_input_input),
         n_tile_size(n_tile_size),
@@ -250,7 +251,7 @@ class GenTilePriorCovarianceKernel
         const std::size_t n_regressors,
         const std::size_t tile_row,
         const std::size_t tile_column,
-        const gprat_hyper::SEKParams sek_params) :
+        const gprat::SEKParams sek_params) :
         d_tile(d_tile),
         d_input(d_input_input),
         n_tile_size(n_tile_size),
@@ -318,7 +319,7 @@ class GenTileCrossCovarianceKernel
         const std::size_t tile_row,
         const std::size_t tile_column,
         const std::size_t n_regressors,
-        const gprat_hyper::SEKParams sek_params) :
+        const gprat::SEKParams sek_params) :
         d_tile(d_tile),
         d_row_input(d_row_input),
         d_col_input(d_col_input),

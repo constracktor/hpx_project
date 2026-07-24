@@ -2,9 +2,9 @@
 #define SYCL_TILED_ALGORITHMS_H
 
 // GPRat
-#include "gp_hyperparameters.hpp"
-#include "target.hpp"
-#include <gp_kernels.hpp>
+#include "gprat/hyperparameters.hpp"
+#include "gprat/kernels.hpp"
+#include "gprat/target.hpp"
 
 // HPX
 #include <hpx/future.hpp>
@@ -230,8 +230,8 @@ double update_lengthscale(
     const std::vector<hpx::shared_future<double *>> &ft_invK,
     const std::vector<hpx::shared_future<double *>> &ft_gradparam,
     const std::vector<hpx::shared_future<double *>> &ft_alpha,
-    gprat_hyper::SEKParams sek_params,
-    gprat_hyper::AdamParams adam_params,
+    gprat::SEKParams sek_params,
+    gprat::AdamParams adam_params,
     const std::size_t n_tile_size,
     const std::size_t n_tiles,
     std::vector<hpx::shared_future<double>> &m_T,
@@ -265,8 +265,8 @@ double update_vertical_lengthscale(
     const std::vector<hpx::shared_future<double *>> &ft_invK,
     const std::vector<hpx::shared_future<double *>> &ft_gradparam,
     const std::vector<hpx::shared_future<double *>> &ft_alpha,
-    gprat_hyper::SEKParams sek_params,
-    gprat_hyper::AdamParams adam_params,
+    gprat::SEKParams sek_params,
+    gprat::AdamParams adam_params,
     const std::size_t n_tile_size,
     const std::size_t n_tiles,
     std::vector<hpx::shared_future<double>> &m_T,
@@ -297,8 +297,8 @@ double update_vertical_lengthscale(
 double update_noise_variance(
     const std::vector<hpx::shared_future<double *>> &ft_invK,
     const std::vector<hpx::shared_future<double *>> &ft_alpha,
-    gprat_hyper::SEKParams sek_params,
-    gprat_hyper::AdamParams adam_params,
+    gprat::SEKParams sek_params,
+    gprat::AdamParams adam_params,
     const std::size_t n_tile_size,
     const std::size_t n_tiles,
     std::vector<hpx::shared_future<double>> &m_T,

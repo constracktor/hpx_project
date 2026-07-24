@@ -1,9 +1,12 @@
-#include "gpu/cuda/tiled_algorithms.cuh"
+#include "gprat/gpu/tiled_algorithms.cuh"
 
-#include "gpu/cuda/adapter_cublas.cuh"
-#include "gpu/cuda/gp_optimizer.cuh"
-#include "gpu/cuda/gp_uncertainty.cuh"
+#include "gprat/gpu/adapter_cublas.cuh"
+#include "gprat/gpu/gp_optimizer.cuh"
+#include "gprat/gpu/gp_uncertainty.cuh"
+
 #include <hpx/algorithm.hpp>
+
+GPRAT_NS_BEGIN
 
 namespace gpu
 {
@@ -13,7 +16,7 @@ namespace gpu
 void right_looking_cholesky_tiled(std::vector<hpx::shared_future<double *>> &ft_tiles,
                                   const std::size_t n_tile_size,
                                   const std::size_t n_tiles,
-                                  gprat::CUDA_GPU &gpu,
+                                  CUDA_GPU &gpu,
                                   const cusolverDnHandle_t &cusolver)
 {
     for (std::size_t k = 0; k < n_tiles; ++k)
@@ -86,7 +89,7 @@ void forward_solve_tiled(std::vector<hpx::shared_future<double *>> &ft_tiles,
                          std::vector<hpx::shared_future<double *>> &ft_rhs,
                          const std::size_t n_tile_size,
                          const std::size_t n_tiles,
-                         gprat::CUDA_GPU &gpu)
+                         CUDA_GPU &gpu)
 {
     for (std::size_t k = 0; k < n_tiles; ++k)
     {
@@ -120,7 +123,7 @@ void backward_solve_tiled(std::vector<hpx::shared_future<double *>> &ft_tiles,
                           std::vector<hpx::shared_future<double *>> &ft_rhs,
                           const std::size_t n_tile_size,
                           const std::size_t n_tiles,
-                          gprat::CUDA_GPU &gpu)
+                          CUDA_GPU &gpu)
 {
     // NOTE: The loops traverse backwards. Its last comparisons require the
     // usage negative numbers. Therefore they use signed int instead of the
@@ -160,7 +163,7 @@ void forward_solve_tiled_matrix(
     const std::size_t m_tile_size,
     const std::size_t n_tiles,
     const std::size_t m_tiles,
-    gprat::CUDA_GPU &gpu)
+    CUDA_GPU &gpu)
 {
     for (std::size_t c = 0; c < m_tiles; ++c)
     {
@@ -209,7 +212,7 @@ void backward_solve_tiled_matrix(
     const std::size_t m_tile_size,
     const std::size_t n_tiles,
     const std::size_t m_tiles,
-    gprat::CUDA_GPU &gpu)
+    CUDA_GPU &gpu)
 {
     for (std::size_t c = 0; c < m_tiles; ++c)
     {
@@ -258,7 +261,7 @@ void matrix_vector_tiled(std::vector<hpx::shared_future<double *>> &ft_tiles,
                          const std::size_t N_col,
                          const std::size_t n_tiles,
                          const std::size_t m_tiles,
-                         gprat::CUDA_GPU &gpu)
+                         CUDA_GPU &gpu)
 {
     for (std::size_t k = 0; k < m_tiles; ++k)
     {
@@ -288,7 +291,7 @@ void symmetric_matrix_matrix_diagonal_tiled(
     const std::size_t m_tile_size,
     const std::size_t n_tiles,
     const std::size_t m_tiles,
-    gprat::CUDA_GPU &gpu)
+    CUDA_GPU &gpu)
 {
     for (std::size_t i = 0; i < m_tiles; ++i)
     {
@@ -315,7 +318,7 @@ void compute_gemm_of_invK_y(std::vector<hpx::shared_future<double *>> &ft_invK,
                             std::vector<hpx::shared_future<double *>> &ft_alpha,
                             const std::size_t n_tile_size,
                             const std::size_t n_tiles,
-                            gprat::CUDA_GPU &gpu)
+                            CUDA_GPU &gpu)
 {
     for (std::size_t i = 0; i < n_tiles; ++i)
     {
@@ -344,7 +347,7 @@ hpx::shared_future<double> compute_loss_tiled(
     std::vector<hpx::shared_future<double *>> &ft_y,
     const std::size_t n_tile_size,
     const std::size_t n_tiles,
-    gprat::CUDA_GPU &gpu)
+    CUDA_GPU &gpu)
 {
     std::vector<hpx::shared_future<double>> loss_tiled(n_tiles);
 
@@ -364,7 +367,7 @@ void symmetric_matrix_matrix_tiled(
     const std::size_t m_tile_size,
     const std::size_t n_tiles,
     const std::size_t m_tiles,
-    gprat::CUDA_GPU &gpu)
+    CUDA_GPU &gpu)
 {
     for (std::size_t c = 0; c < m_tiles; ++c)
     {
@@ -397,7 +400,7 @@ void vector_difference_tiled(std::vector<hpx::shared_future<double *>> &ft_prior
                              std::vector<hpx::shared_future<double *>> &ft_vector,
                              const std::size_t m_tile_size,
                              const std::size_t m_tiles,
-                             gprat::CUDA_GPU &gpu)
+                             CUDA_GPU &gpu)
 {
     for (std::size_t i = 0; i < m_tiles; i++)
     {
@@ -409,7 +412,7 @@ void matrix_diagonal_tiled(std::vector<hpx::shared_future<double *>> &ft_priorK,
                            std::vector<hpx::shared_future<double *>> &ft_vector,
                            const std::size_t m_tile_size,
                            const std::size_t m_tiles,
-                           gprat::CUDA_GPU &gpu)
+                           CUDA_GPU &gpu)
 {
     for (std::size_t i = 0; i < m_tiles; i++)
     {
@@ -422,7 +425,7 @@ void update_grad_K_tiled_mkl(std::vector<hpx::shared_future<double *>> &ft_tiles
                              const std::vector<hpx::shared_future<double *>> &ft_v2,
                              const std::size_t n_tile_size,
                              const std::size_t n_tiles,
-                             gprat::CUDA_GPU &gpu)
+                             CUDA_GPU &gpu)
 {
     for (std::size_t i = 0; i < n_tiles; ++i)
     {
@@ -441,8 +444,8 @@ static double update_hyperparameter(
     const std::vector<hpx::shared_future<double *>> &ft_gradparam,
     const std::vector<hpx::shared_future<double *>> &ft_alpha,
     double &hyperparameter,  // lengthscale or vertical-lengthscale
-    gprat_hyper::SEKParams sek_params,
-    gprat_hyper::AdamParams adam_params,
+    SEKParams sek_params,
+    AdamParams adam_params,
     const std::size_t n_tile_size,
     const std::size_t n_tiles,
     std::vector<hpx::shared_future<double>> &m_T,
@@ -451,7 +454,7 @@ static double update_hyperparameter(
     const std::vector<hpx::shared_future<double>> &beta2_T,
     int iter,
     int param_idx,  // 0 for lengthscale, 1 for vertical-lengthscale
-    gprat::CUDA_GPU &gpu)
+    CUDA_GPU &gpu)
 {
     throw std::logic_error("Function not implemented for GPU");
     // return 0;
@@ -461,8 +464,8 @@ double update_lengthscale(
     const std::vector<hpx::shared_future<double *>> &ft_invK,
     const std::vector<hpx::shared_future<double *>> &ft_gradparam,
     const std::vector<hpx::shared_future<double *>> &ft_alpha,
-    gprat_hyper::SEKParams sek_params,
-    gprat_hyper::AdamParams adam_params,
+    SEKParams sek_params,
+    AdamParams adam_params,
     const std::size_t n_tile_size,
     const std::size_t n_tiles,
     std::vector<hpx::shared_future<double>> &m_T,
@@ -470,7 +473,7 @@ double update_lengthscale(
     const std::vector<hpx::shared_future<double>> &beta1_T,
     const std::vector<hpx::shared_future<double>> &beta2_T,
     int iter,
-    gprat::CUDA_GPU &gpu)
+    CUDA_GPU &gpu)
 {
     return update_hyperparameter(
         ft_invK,
@@ -494,8 +497,8 @@ double update_vertical_lengthscale(
     const std::vector<hpx::shared_future<double *>> &ft_invK,
     const std::vector<hpx::shared_future<double *>> &ft_gradparam,
     const std::vector<hpx::shared_future<double *>> &ft_alpha,
-    gprat_hyper::SEKParams sek_params,
-    gprat_hyper::AdamParams adam_params,
+    SEKParams sek_params,
+    AdamParams adam_params,
     const std::size_t n_tile_size,
     const std::size_t n_tiles,
     std::vector<hpx::shared_future<double>> &m_T,
@@ -503,7 +506,7 @@ double update_vertical_lengthscale(
     const std::vector<hpx::shared_future<double>> &beta1_T,
     const std::vector<hpx::shared_future<double>> &beta2_T,
     int iter,
-    gprat::CUDA_GPU &gpu)
+    CUDA_GPU &gpu)
 {
     return update_hyperparameter(
         ft_invK,
@@ -526,8 +529,8 @@ double update_vertical_lengthscale(
 double update_noise_variance(
     const std::vector<hpx::shared_future<double *>> &ft_invK,
     const std::vector<hpx::shared_future<double *>> &ft_alpha,
-    gprat_hyper::SEKParams sek_params,
-    gprat_hyper::AdamParams adam_params,
+    SEKParams sek_params,
+    AdamParams adam_params,
     const std::size_t n_tile_size,
     const std::size_t n_tiles,
     std::vector<hpx::shared_future<double>> &m_T,
@@ -535,10 +538,12 @@ double update_noise_variance(
     const std::vector<hpx::shared_future<double>> &beta1_T,
     const std::vector<hpx::shared_future<double>> &beta2_T,
     int iter,
-    gprat::CUDA_GPU &gpu)
+    CUDA_GPU &gpu)
 {
     throw std::logic_error("Function not implemented for GPU");
     // return 0;
 }
 
 }  // end of namespace gpu
+
+GPRAT_NS_END

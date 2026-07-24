@@ -1,6 +1,6 @@
 spack:
   specs:
-  - hpx@1.10.0%gcc malloc=system networking=none max_cpu_count=256 instrumentation=apex ^cmake@3.30 ^curl@8.10.1 ^ninja@1.12.1
+  - hpx@1.10.0+static%gcc malloc=system max_cpu_count=256 instrumentation=apex ^cmake@3.30 ^curl@8.10.1 ^ninja@1.12.1
   - intel-oneapi-mkl@2024.2.1%gcc shared=false
   - openblas@0.3.28 shared=false fortran=false
   - cmake@3.30

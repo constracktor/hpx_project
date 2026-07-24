@@ -339,8 +339,9 @@ dot_diag_gemm(sycl::queue queue, double *f_A, double *f_B, double *f_r, const st
 
 double *dot(sycl::queue queue, double *f_a, double *f_b, const std::size_t N)
 {
-    double *result = sycl::malloc_device<double>(1, queue);
-    queue.fill(result, 0, 1).wait();
+    // Use shared USM so the result is readable from the host without an explicit copy.
+    double *result = sycl::malloc_shared<double>(1, queue);
+    *result = 0.0;
 
     oneapi::math::blas::column_major::dot(queue, static_cast<std::int64_t>(N), f_a, 1, f_b, 1, result);
 

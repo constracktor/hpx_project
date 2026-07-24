@@ -51,15 +51,17 @@ double compute_loss(const hpx::shared_future<double *> &K_diag_tile,
     sycl::queue queue = sycl_device.next_queue();
     // l = y^T * alpha + \sum_i^N log(L_ii^2)
     double l;
-    // Compute y^T * alpha
+    // Compute y^T * alpha (result in shared USM, readable from host)
     double *d_dot = dot(queue, y_tile.get(), alpha_tile.get(), N);
     l = *d_dot;
     sycl::free(d_dot, queue);
+    // Copy diagonal tile to host so we can read it
+    std::vector<double> h_diag(N * N);
+    queue.memcpy(h_diag.data(), K_diag_tile.get(), N * N * sizeof(double)).wait();
     // Compute \sum_i^N log(L_ii^2)
     for (std::size_t i = 0; i < N; i++)
     {
-        double diag_value = K_diag_tile.get()[i * N + i];
-        l += std::log(diag_value * diag_value);
+        l += std::log(h_diag[i * N + i] * h_diag[i * N + i]);
     }
     return l;
 }

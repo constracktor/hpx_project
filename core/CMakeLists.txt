@@ -30,6 +30,8 @@ add_compile_definitions(GPRAT_WITH_CUDA=$<BOOL:${GPRAT_WITH_CUDA}>
                         GPRAT_WITH_SYCL=$<BOOL:${GPRAT_WITH_SYCL}>)
 
 if(GPRAT_WITH_CUDA)
+  set(CMAKE_CUDA_STANDARD 20)
+  set(CMAKE_CUDA_EXTENSIONS OFF)
   enable_language(CUDA)
 endif()
 
@@ -56,11 +58,13 @@ add_compile_definitions(GPRAT_APEX_CHOLESKY=$<BOOL:${GPRAT_APEX_CHOLESKY}>)
 
 # Set general GPRAT source files
 set(SOURCE_FILES
-    src/gprat_c.cpp
-    src/utils_c.cpp
+    src/gprat.cpp
+    src/utils.cpp
+    src/performance_counters.cpp
     src/target.cpp
-    src/gp_kernels.cpp
-    src/gp_hyperparameters.cpp
+    src/tile_data.cpp
+    src/kernels.cpp
+    src/hyperparameters.cpp
     src/cpu/gp_functions.cpp
     src/cpu/gp_algorithms.cpp
     src/cpu/gp_uncertainty.cpp
@@ -82,7 +86,31 @@ if(GPRAT_WITH_SYCL)
     src/gpu/sycl/sycl_tiled_algorithms.cpp)
 endif()
 
-# Add CUDA-specific source files if enabled
+# Distributed HPX sources (HPX actions, tile cache, tiled dataset)
+option(GPRAT_WITH_DISTRIBUTED "Enable distributed GP support via HPX actions"
+       OFF)
+add_compile_definitions(
+  GPRAT_WITH_DISTRIBUTED=$<BOOL:${GPRAT_WITH_DISTRIBUTED}>)
+
+if(GPRAT_WITH_DISTRIBUTED)
+  list(
+    APPEND
+    SOURCE_FILES
+    src/cpu/adapter_cblas_fp64_actions.cpp
+    src/cpu/gp_algorithms_actions.cpp
+    src/cpu/gp_uncertainty_actions.cpp
+    src/cpu/gp_optimizer_actions.cpp
+    src/tile_cache.cpp
+    src/tiled_dataset.cpp)
+
+  # HPX registration macros create static factory objects that icpx sees as
+  # unused
+  set_source_files_properties(
+    src/cpu/adapter_cblas_fp64_actions.cpp src/cpu/gp_algorithms_actions.cpp
+    src/cpu/gp_uncertainty_actions.cpp src/cpu/gp_optimizer_actions.cpp
+    src/tiled_dataset.cpp PROPERTIES COMPILE_OPTIONS "-Wno-unused-variable")
+endif()
+
 if(GPRAT_WITH_CUDA)
   list(
     APPEND
@@ -135,7 +163,10 @@ target_link_libraries(gprat_core PUBLIC HPX::hpx)
 
 # Link CUDA libaries if enabled
 if(GPRAT_WITH_CUDA)
+  find_package(CUDAToolkit MODULE REQUIRED)
   target_link_libraries(gprat_core PUBLIC CUDA::cusolver CUDA::cublas)
+  # Flag not working for CLANG CUDA
+  target_compile_features(gprat_core PUBLIC cuda_std_${CMAKE_CUDA_STANDARD})
 endif()
 
 # SYCL / oneMath linking
@@ -144,9 +175,31 @@ if(GPRAT_WITH_SYCL)
   find_package(oneMath REQUIRED)
 
   # Select SYCL backend architecture
+  set(GPRAT_SYCL_CUDA_PATH
+      ""
+      CACHE PATH "CUDA installation path for icpx NVIDIA SYCL target.")
+
+  set(GPRAT_SYCL_NVIDIA_ARCH
+      ""
+      CACHE
+        STRING
+        "NVIDIA GPU SM arch for SYCL (e.g. sm_80). Derived from GPRAT_SYCL_CUDA_PATH if empty."
+  )
+
+  set(SYCL_FLAGS ${SYCL_FLAGS} -Wno-unused-command-line-argument)
+
   if(GPRAT_SYCL_NVIDIA)
 
     set(SYCL_FLAGS ${SYCL_FLAGS} -fsycl -fsycl-targets=nvptx64-nvidia-cuda)
+    if(GPRAT_SYCL_CUDA_PATH)
+      list(APPEND SYCL_FLAGS
+           "SHELL:-Xsycl-target-backend --cuda-path=${GPRAT_SYCL_CUDA_PATH}")
+    endif()
+    if(GPRAT_SYCL_NVIDIA_ARCH)
+      list(
+        APPEND SYCL_FLAGS
+        "SHELL:-Xsycl-target-backend --cuda-gpu-arch=${GPRAT_SYCL_NVIDIA_ARCH}")
+    endif()
 
   elseif(GPRAT_SYCL_AMD)
 
@@ -217,6 +270,12 @@ else()
   target_link_libraries(gprat_core PUBLIC ${OpenBLAS_LIB})
 endif()
 
+target_compile_definitions(gprat_core
+                           PUBLIC GPRAT_WITH_CUDA=$<BOOL:${GPRAT_WITH_CUDA}>)
+if(GPRAT_ENABLE_BENCHMARK_CACHE_EVICTIONS)
+  target_compile_definitions(gprat_core
+                             PUBLIC GPRAT_ENABLE_BENCHMARK_CACHE_EVICTIONS)
+endif()
 target_compile_features(gprat_core PUBLIC cxx_std_20)
 
 set_property(TARGET gprat_core PROPERTY POSITION_INDEPENDENT_CODE ON)

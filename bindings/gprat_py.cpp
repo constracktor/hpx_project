@@ -1,4 +1,5 @@
-#include "gprat_c.hpp"
+#include "gprat/gprat.hpp"
+
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
@@ -31,19 +32,19 @@ void init_gprat(py::module &m)
     // Set hyperparameters to default values in `AdamParams` class, unless
     // specified. Python object has full access to each hyperparameter and a
     // string representation `__repr__`.
-    py::class_<gprat_hyper::AdamParams>(m, "AdamParams")
+    py::class_<gprat::AdamParams>(m, "AdamParams")
         .def(py::init<double, double, double, double, int>(),
              py::arg("learning_rate") = 0.001,
              py::arg("beta1") = 0.9,
              py::arg("beta2") = 0.999,
              py::arg("epsilon") = 1e-8,
              py::arg("opt_iter") = 0)
-        .def_readwrite("learning_rate", &gprat_hyper::AdamParams::learning_rate)
-        .def_readwrite("beta1", &gprat_hyper::AdamParams::beta1)
-        .def_readwrite("beta2", &gprat_hyper::AdamParams::beta2)
-        .def_readwrite("epsilon", &gprat_hyper::AdamParams::epsilon)
-        .def_readwrite("opt_iter", &gprat_hyper::AdamParams::opt_iter)
-        .def("__repr__", &gprat_hyper::AdamParams::repr);
+        .def_readwrite("learning_rate", &gprat::AdamParams::learning_rate)
+        .def_readwrite("beta1", &gprat::AdamParams::beta1)
+        .def_readwrite("beta2", &gprat::AdamParams::beta2)
+        .def_readwrite("epsilon", &gprat::AdamParams::epsilon)
+        .def_readwrite("opt_iter", &gprat::AdamParams::opt_iter)
+        .def("__repr__", &gprat::AdamParams::repr);
 
     // Initializes Gaussian Process with `GP` class. Sets default parameters for
     // squared exponential kernel, number of regressors and trainable, unless
@@ -136,6 +137,8 @@ Parameters:
              py::arg("test_data"),
              py::arg("m_tiles"),
              py::arg("m_tile_size"))
+        .def(
+            "cholesky", &gprat::GP::cholesky, "Compute and return the Cholesky decomposition of the covariance matrix.")
         .def("optimize", &gprat::GP::optimize, py::arg("AdamParams"))
         .def("optimize_step", &gprat::GP::optimize_step, py::arg("AdamParams"), py::arg("iter"))
         .def("compute_loss", &gprat::GP::calculate_loss);

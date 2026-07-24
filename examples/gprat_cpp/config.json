@@ -7,14 +7,14 @@
     "TRAIN_SIZE_END": 1024,
     "STEP": 2,
     "START_CORES": 1,
-    "END_CORES": 4,
+    "END_CORES": 2,
     "TEST_SIZE": 1024,
     "SCALE_TEST_WITH_TRAIN": true, 
     "N_REG": 8,
     "OPT_ITER": 1,
     "LOOP": 2,
     "N_TILES_START": 1,
-    "N_TILES_END": 32,
+    "N_TILES_END": 2,
     "STEP_TILES": 2,
     "CHOLESKY": true
 }

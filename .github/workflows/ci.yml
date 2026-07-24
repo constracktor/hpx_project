@@ -45,7 +45,11 @@ jobs:
 
     - name: Choose environment
       run: |
-        cp spack-repo/environments/spack_cpu_gcc.yaml spack.yaml
+        # gprat_cpu_gcc_dist (rather than gprat_cpu_gcc) builds HPX with networking=tcp instead
+        # of networking=none, which --hpx:localities (used by the distributed multi-locality
+        # tests, see test/CMakeLists.txt) requires. It has no MKL variant, so the rest of this
+        # job uses OpenBLAS (-DGPRAT_ENABLE_MKL=OFF / -DUSE_MKL=OFF below) instead.
+        cp spack-repo/environments/spack_cpu_gcc_dist.yaml spack.yaml
         cat spack-repo/environments/ci_env_settings.yaml.tpl >> spack.yaml
 
     - name: Concretize
@@ -61,7 +65,7 @@ jobs:
       shell: spack-bash {0}
       run: |
         spack env activate .
-        cmake "--preset=ci-${{ matrix.os }}"
+        cmake "--preset=ci-${{ matrix.os }}" -DGPRAT_ENABLE_MKL=OFF -DGPRAT_WITH_DISTRIBUTED=ON -DGPRAT_TEST_MULTI_LOCALITY=ON
 
     - name: Build
       run: cmake --build build --config Release
@@ -87,7 +91,7 @@ jobs:
       shell: spack-bash {0}
       run: |
         spack env activate .
-        cmake -G "Unix Makefiles" -S examples/gprat_cpp -B build_examples -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$PWD/prefix -DUSE_MKL=ON
+        cmake -G "Unix Makefiles" -S examples/gprat_cpp -B build_examples -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$PWD/prefix -DUSE_MKL=OFF
 
     - name: Build example project
       run: cmake --build build_examples --config Release

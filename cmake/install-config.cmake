@@ -10,5 +10,6 @@ else()
 endif()
 
 find_package(HPX REQUIRED)
+include("${CMAKE_CURRENT_LIST_DIR}/hpx-apex-compat.cmake")
 
 include("${CMAKE_CURRENT_LIST_DIR}/GPRatTargets.cmake")

@@ -204,5 +204,8 @@ compile_commands.json
 # Build files
 build*
 
+# CTest output
+Testing/
+
 # Ignore folder
 ignore

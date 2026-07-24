@@ -1,23 +1,20 @@
-#include "target.hpp"
+#include "gprat/target.hpp"
 
 #include <iostream>
+#include <unordered_map>
 #include <vector>
 
 #if GPRAT_WITH_CUDA
-#include "gpu/cuda/cuda_utils.cuh"
-using hpx::cuda::experimental::check_cuda_error;
+#include "gprat/gpu/cuda_utils.cuh"
 #endif
 
 #if GPRAT_WITH_SYCL
 #include "gpu/sycl/sycl_utils.hpp"
 #endif
 
-namespace gprat
-{
+GPRAT_NS_BEGIN
 
-// CPU ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-CPU::CPU() { }
+CPU::CPU() = default;
 
 bool CPU::is_cpu() { return true; }
 
@@ -45,6 +42,7 @@ CUDA_GPU::CUDA_GPU(int id, int n_streams) :
     {
         throw std::runtime_error("Requested GPU device is not available.");
     }
+    check_cuda_error(cudaSetDevice(id));
 }
 
 bool CUDA_GPU::is_cpu() { return false; }
@@ -62,6 +60,9 @@ std::string CUDA_GPU::repr() const
 
 void CUDA_GPU::create()
 {
+    // Streams and cuBLAS handles are bound to the device active at creation time,
+    // so make sure the requested device is selected (also on this thread).
+    check_cuda_error(cudaSetDevice(id));
     streams = std::vector<cudaStream_t>(static_cast<std::size_t>(n_streams));
     cublas_handles = std::vector<cublasHandle_t>(static_cast<std::size_t>(n_streams));
     for (size_t i = 0; i < streams.size(); ++i)
@@ -73,6 +74,7 @@ void CUDA_GPU::create()
 
 void CUDA_GPU::destroy()
 {
+    check_cuda_error(cudaSetDevice(id));
     for (size_t i = 0; i < streams.size(); ++i)
     {
         check_cuda_error(cudaStreamDestroy(streams[i]));
@@ -124,8 +126,8 @@ CUDA_GPU get_gpu() { return CUDA_GPU(0, 1); }
 #if GPRAT_WITH_SYCL
 
 SYCL_DEVICE::SYCL_DEVICE(int id, int n_queues) :
-    id(id),
-    n_queues(n_queues),
+    id(static_cast<std::size_t>(id)),
+    n_queues(static_cast<std::size_t>(n_queues)),
     i_queue(0),
     local_memory_size(0),
     queues()
@@ -147,15 +149,19 @@ SYCL_DEVICE::SYCL_DEVICE(int id, int n_queues) :
             }
         }
 
-        std::size_t device_count = all_gpus.size();
-        if (id >= device_count)
+        const std::size_t device_count = all_gpus.size();
+        if (static_cast<std::size_t>(id) >= device_count)
         {
             throw std::runtime_error("Requested GPU device is not available.");
         }
+
+        // Store the selected device so create() can target it specifically.
+        selected_device_ = all_gpus[static_cast<std::size_t>(id)];
     }
-    catch (const sycl::exception &e)
+    catch (const std::exception &e)
     {
-        std::cout << "SYCL exception: " << e.what() << "\n";
+        std::cout << "SYCL error during device selection: " << e.what() << "\n";
+        throw;
     }
 }
 
@@ -178,20 +184,25 @@ void SYCL_DEVICE::create()
     {
         // Each fresh GP object creates its own queue from a bare selector, which
         // creates a new Level-Zero context; hundreds of cycles exhaust driver
-        // resources (DEVICE_LOST). Share one context process-wide instead.
-        static const sycl::device shared_device(sycl::gpu_selector_v);
-        static const sycl::context shared_context(shared_device);
+        // resources (DEVICE_LOST). Share one context per device process-wide instead.
+        static std::unordered_map<std::size_t, sycl::context> shared_contexts;
+        auto it = shared_contexts.find(id);
+        if (it == shared_contexts.end())
+        {
+            it = shared_contexts.emplace(id, sycl::context(selected_device_)).first;
+        }
 
         queues = std::vector<sycl::queue>(n_queues);
 
         for (size_t i = 0; i < n_queues; ++i)
         {
-            queues[i] = sycl::queue(shared_context, shared_device);
+            queues[i] = sycl::queue(it->second, selected_device_);
         }
     }
-    catch (const sycl::exception &e)
+    catch (const std::exception &e)
     {
-        std::cout << "SYCL exception during creation: " << e.what() << "\n";
+        std::cout << "SYCL error during queue creation: " << e.what() << "\n";
+        throw;
     }
 }
 
@@ -237,7 +248,10 @@ void SYCL_DEVICE::sync_queues(std::vector<sycl::queue> &subset_of_queues)
     }
 }
 
-SYCL_DEVICE get_sycl_device(const std::size_t id, const std::size_t n_queues) { return SYCL_DEVICE(id, n_queues); }
+SYCL_DEVICE get_sycl_device(const std::size_t id, const std::size_t n_queues)
+{
+    return SYCL_DEVICE(static_cast<int>(id), static_cast<int>(n_queues));
+}
 
 SYCL_DEVICE get_sycl_device() { return SYCL_DEVICE(0, 1); }
 
@@ -353,13 +367,13 @@ int gpu_count()
                 }
             }
         }
-        int device_count = all_gpus.size();
-        return device_count;
+        return static_cast<int>(all_gpus.size());
     }
     catch (const sycl::exception &e)
     {
         std::cout << "SYCL exception: " << e.what() << "\n";
     }
+    return 0;
 
 #else
 
@@ -371,4 +385,4 @@ int gpu_count()
 #endif
 }
 
-}  // namespace gprat
+GPRAT_NS_END

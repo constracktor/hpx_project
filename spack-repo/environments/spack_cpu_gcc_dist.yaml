@@ -1,0 +1,8 @@
+spack:
+  specs:
+  - hpx@1.10.0%gcc networking=tcp malloc=system max_cpu_count=256 instrumentation=none ^cmake@3.30 ^curl@8.10.1 ^ninja@1.12.1
+  - openblas@0.3.28 shared=false fortran=true
+  - cmake@3.30
+  view: true
+  concretizer:
+    unify: true
