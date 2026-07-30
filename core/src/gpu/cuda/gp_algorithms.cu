@@ -276,7 +276,7 @@ hpx::shared_future<double *> gen_tile_cross_cov_T(std::size_t n_row_tile_size,
     dim3 n_blocks((n_column_tile_size + BLOCK_SIZE - 1) / BLOCK_SIZE, (n_row_tile_size + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
     transpose<<<n_blocks, threads_per_block, 0, stream>>>(
-        transposed, d_cross_covariance_tile, n_row_tile_size, n_column_tile_size);
+        transposed, d_cross_covariance_tile, n_column_tile_size, n_row_tile_size);
 
     check_cuda_error(cudaStreamSynchronize(stream));
 

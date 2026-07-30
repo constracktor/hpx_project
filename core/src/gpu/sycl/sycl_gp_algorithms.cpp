@@ -186,7 +186,7 @@ hpx::shared_future<double *> gen_tile_cross_cov_T(std::size_t n_row_tile_size,
             [&](sycl::handler &cgh)
             {
                 auto kernel =
-                    TransposeKernel(transposed, d_cross_covariance_tile, n_row_tile_size, n_column_tile_size, cgh);
+                    TransposeKernel(transposed, d_cross_covariance_tile, n_column_tile_size, n_row_tile_size, cgh);
                 cgh.parallel_for(sycl::nd_range<2>(global_range, local_range), kernel);
             });
 

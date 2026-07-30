@@ -192,7 +192,7 @@ cython_debug/
 
 # Datafiles
 examples/*/output.csv
-examples/gprat_*/include/
+examples/*/include/
 examples/gpflow_reference/GPflow
 /.vscode
 benchmark_results_*

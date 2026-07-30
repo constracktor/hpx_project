@@ -55,3 +55,13 @@ add_test(
   NAME GPRat_test_output_correctness
   COMMAND GPRat_test_output_correctness
   WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
+
+add_executable(GPRat_test_unit src/unit_tests.cpp)
+target_link_libraries(GPRat_test_unit PRIVATE GPRat::core
+                                              Catch2::Catch2WithMain)
+target_compile_features(GPRat_test_unit PRIVATE cxx_std_17)
+
+add_test(
+  NAME GPRat_test_unit
+  COMMAND GPRat_test_unit
+  WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
